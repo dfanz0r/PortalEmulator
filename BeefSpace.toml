@@ -1,0 +1,5 @@
+FileVersion = 1
+Projects = {PortalEmulator = {Path = "."}, "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}}
+
+[Workspace]
+StartupProject = "PortalEmulator"

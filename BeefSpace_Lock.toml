@@ -1,0 +1,11 @@
+FileVersion = 1
+
+[Locks."SDL3-Beef.git".Git]
+URL = "https://github.com/jayrulez/SDL3-Beef.git"
+Tag = ""
+Hash = "b020ba038d326a16ea48f54c71c3139cd2b2c21f"
+
+[Locks.SDL3_shadercross-Beef.Git]
+URL = "https://github.com/jayrulez/SDL3_shadercross-Beef"
+Tag = ""
+Hash = "11b104117723313769f7754a0e6cbaee91ff2fce"
