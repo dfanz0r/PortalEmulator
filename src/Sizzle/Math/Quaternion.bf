@@ -194,6 +194,7 @@ struct Quaternion<T> : IEquatable<Self>, IHashable
 
 			double siny_cosp = two * (qw * qz + qx * qy);
 			double cosy_cosp = 1.0 - two * (qy * qy + qz * qz);
+
 			yaw = Math.Atan2(siny_cosp, cosy_cosp);
 		}
 

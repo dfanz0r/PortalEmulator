@@ -1,5 +1,8 @@
 using System;
 using Sizzle.Core;
+using System.Numerics;
+
+using internal Sizzle.Math;
 
 namespace Sizzle.Math;
 
@@ -59,6 +62,7 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 		/// @brief Alpha channel.
 		public T a;
 	};
+	private Num4<T> mVectorized;
 
 	/// @brief Creates a copy of another 4D vector.
 	/// @param vec4 Source vector.
@@ -68,6 +72,11 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 		this.y = vec4.y;
 		this.z = vec4.z;
 		this.w = vec4.w;
+	}
+
+	private this(in Num4<T> num4)
+	{
+		this.mVectorized = num4;
 	}
 
 	/// @brief Creates a 4D vector from a 3D vector, padding W with the default value.
@@ -136,6 +145,8 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 		this.w = values[3];
 	}
 
+#if DEBUG
+	// This is currently here to deal with a compiler bug with release mode where UnderlyingArray/intrinsics does not emit correct instructions for doubles
 	// Component-wise overloads
 	/// @brief Multiplies two vectors component-wise.
 	[Inline]
@@ -152,7 +163,27 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 	/// @brief Subtracts two vectors component-wise.
 	[Inline]
 	public static Self operator -(in Self lhs, in Self rhs) => .(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z, lhs.w - rhs.w);
+#else
+	// Component-wise overloads
+	/// @brief Multiplies two vectors component-wise.
+	[Inline]
+	public static Self operator *(in Self lhs, in Self rhs) => .(lhs.mVectorized * rhs.mVectorized);
+	/// @brief Divides two vectors component-wise.
+	[Inline]
+	public static Self operator /(in Self lhs, in Self rhs) => .(lhs.mVectorized / rhs.mVectorized);
+	/// @brief Applies component-wise modulo between two vectors.
+	[Inline]
+	public static Self operator %(in Self lhs, in Self rhs) => .(lhs.mVectorized % rhs.mVectorized);
+	/// @brief Adds two vectors component-wise.
+	[Inline]
+	public static Self operator +(in Self lhs, in Self rhs) => .(lhs.mVectorized + rhs.mVectorized);
+	/// @brief Subtracts two vectors component-wise.
+	[Inline]
+	public static Self operator -(in Self lhs, in Self rhs) => .(lhs.mVectorized - rhs.mVectorized);
+#endif
 
+
+#if DEBUG
 	/// @brief Multiplies each component by a scalar.
 	[Inline]
 	public static Self operator *(in Self lhs, T rhs) => .(lhs.x * rhs, lhs.y * rhs, lhs.z * rhs, lhs.w * rhs);
@@ -171,7 +202,34 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 	/// @brief Negates all components.
 	[Inline]
 	public static Self operator -(Self val) => .(-val.x, -val.y, -val.z, -val.w);
+#else
 
+	/// @brief Multiplies each component by a scalar.
+	[Inline]
+	public static Self operator *(in Self lhs, T rhs) => .(lhs.mVectorized * rhs);
+	/// @brief Divides each component by a scalar.
+	[Inline]
+	public static Self operator /(in Self lhs, T rhs) => .(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs, lhs.w / rhs);
+	/// @brief Applies scalar modulo to each component.
+	[Inline]
+	public static Self operator %(in Self lhs, T rhs) => .(lhs.mVectorized % rhs);
+	/// @brief Adds a scalar to each component.
+	[Inline]
+	public static Self operator +(in Self lhs, T rhs) => .(lhs.mVectorized + rhs);
+	/// @brief Subtracts a scalar from each component.
+	[Inline]
+	public static Self operator -(in Self lhs, T rhs) => .(lhs.mVectorized - rhs);
+	/// @brief Negates all components.
+
+	private static Num4<T> negate = .((T) - 1, (T) - 1, (T) - 1, (T) - 1);
+
+	[Inline]
+	public static Self operator -(Self val) => .(val.mVectorized * negate);
+#endif
+
+
+
+#if DEBUG
 	// instance operators
 	/// @brief Multiplies this vector by another component-wise in-place.
 	[Inline]
@@ -256,6 +314,93 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 	{
 		x--; y--; z--; w--;
 	}
+	#else
+
+	// instance operators
+	/// @brief Multiplies this vector by another component-wise in-place.
+	[Inline]
+	public void operator *=(in Self rhs) mut
+	{
+		mVectorized = mVectorized * rhs.mVectorized;
+	}
+
+	/// @brief Divides this vector by another component-wise in-place.
+	[Inline]
+	public void operator /=(in Self rhs) mut
+	{
+		mVectorized = mVectorized / rhs.mVectorized;
+	}
+
+	/// @brief Applies component-wise modulo in-place.
+	[Inline]
+	public void operator %=(in Self rhs) mut
+	{
+		mVectorized = mVectorized % rhs.mVectorized;
+	}
+
+	/// @brief Adds another vector component-wise in-place.
+	[Inline]
+	public void operator +=(in Self rhs) mut
+	{
+		mVectorized = mVectorized + rhs.mVectorized;
+	}
+
+	/// @brief Subtracts another vector component-wise in-place.
+	[Inline]
+	public void operator -=(in Self rhs) mut
+	{
+		mVectorized = mVectorized - rhs.mVectorized;
+	}
+
+	/// @brief Multiplies each component by a scalar in-place.
+	[Inline]
+	public void operator *=(T rhs) mut
+	{
+		mVectorized = mVectorized * rhs;
+	}
+
+	/// @brief Divides each component by a scalar in-place.
+	[Inline]
+	public void operator /=(T rhs) mut
+	{
+		mVectorized = mVectorized / rhs;
+	}
+
+	/// @brief Applies scalar modulo to each component in-place.
+	[Inline]
+	public void operator %=(T rhs) mut
+	{
+		mVectorized = mVectorized % rhs;
+	}
+
+	/// @brief Adds a scalar to each component in-place.
+	[Inline]
+	public void operator +=(T rhs) mut
+	{
+		mVectorized = mVectorized + rhs;
+	}
+
+	/// @brief Subtracts a scalar from each component in-place.
+	[Inline]
+	public void operator -=(T rhs) mut
+	{
+		mVectorized = mVectorized - rhs;
+	}
+
+	/// @brief Increments all components.
+	[Inline]
+	public void operator ++() mut
+	{
+		mVectorized = mVectorized++;
+	}
+
+	/// @brief Decrements all components.
+	[Inline]
+	public void operator --() mut
+	{
+		mVectorized = mVectorized--;
+	}
+	#endif
 
 	/// @brief Provides indexed access to the vector components.
 	/// @param i Component index in [0, 3].
