@@ -115,45 +115,65 @@ public static class BitHelpers
 		return count;
 	}
 
-	private const int32[?] DeBruijnLookupTable = int32[](
-		0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
-		31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
-		);
+	private const uint32 DeBruijn32Magic = 0x077CB531U;
+	private const int DeBruijn32Shift = 27;
+	private static readonly int[32] sDeBruijn32Table = BuildDeBruijnTable<uint32>(DeBruijn32Magic, DeBruijn32Shift);
 
-	/// @brief Get the zero-based position of the least significant set bit.
-	/// @param bits Input mask to examine.
-	/// @returns The index of the least significant set bit, or -1 if no bits are set.
-	[Inline]
-	public static int GetLSBitPosition(uint32 bits)
+	private const uint64 DeBruijn64Magic = 0x03F79D71B4CB0A89UL;
+	private const int DeBruijn64Shift = 58;
+	private static readonly int[64] sDeBruijn64Table = BuildDeBruijnTable<uint64>(DeBruijn64Magic, DeBruijn64Shift);
+
+		/// @brief Counts trailing zero bits in a 32-bit mask.
+		/// @param v Value to analyze.
+		/// @returns Number of zero bits preceding the lowest set bit, or 32 when <c>v</c> is zero.
+		[Inline]
+		public static int TrailingZeroCount(uint32 v)
+		{
+			if (v == 0)
+			{
+				return 32;
+			}
+
+			uint32 isolated = v & (~v &+ 1U);
+			uint32 index = (isolated * DeBruijn32Magic) >> DeBruijn32Shift;
+			return sDeBruijn32Table[index];
+		}
+
+		/// @brief Counts trailing zero bits in a 64-bit mask.
+		/// @param v Value to analyze.
+		/// @returns Number of zero bits preceding the lowest set bit, or 64 when <c>v</c> is zero.
+		[Inline]
+		public static int TrailingZeroCount(uint64 v)
+		{
+			if (v == 0)
+			{
+				return 64;
+			}
+
+			uint64 isolated = v & (~v &+ 1UL);
+			uint64 index = (isolated * DeBruijn64Magic) >> DeBruijn64Shift;
+			return sDeBruijn64Table[index];
+		}
+
+	[Comptime]
+	private static int[sizeof(T) * 8] BuildDeBruijnTable<T>(T magic, int shift)
+		where uint64 : operator explicit T
+		where T :
+		operator explicit uint64,
+		operator T << int,
+		operator T >> int,
+		operator T * T
 	{
-		if (bits == 0)
+		const int BitCount = sizeof(T) * 8;
+		int[BitCount] table = default;
+		for (int i = 0; i < BitCount; i++)
 		{
-			return -1;
+			T bit = ((T)1) << i;
+			uint64 product = (uint64)(bit * magic);
+			int index = (int)(product >> shift);
+			table[index] = i;
 		}
-
-		uint32 lsBit = bits & (~bits &+ 1U);
-		uint32 index = (lsBit &* 0x077CB531U) >> 27;
-		return DeBruijnLookupTable[index];
-	}
-
-	/// @brief Counts trailing zero bits in a 64-bit mask.
-	/// @param v Value to analyze.
-	/// @returns Number of zero bits preceding the lowest set bit, or 64 when <c>v</c> is zero.
-	[Inline]
-	public static int TrailingZeroCount(uint64 v)
-	{
-		if (v == 0)
-		{
-			return 64;
-		}
-
-		uint32 lower = (uint32)v;
-		if (lower != 0)
-		{
-			return GetLSBitPosition(lower);
-		}
-
-		return 32 + GetLSBitPosition((uint32)(v >> 32));
+		return table;
 	}
 
 	/// @brief Truncates a floating-point value to the desired number of decimal digits.
@@ -269,10 +289,10 @@ public static class BitHelpers
 				return .Err;
 			}
 
-			uint32 lsBit = bits & (~bits &+ 1U);
-			uint32 index = (lsBit &* 0x077CB531U) >> 27;
-			bits &= ~lsBit;
-			return .Ok(DeBruijnLookupTable[index]);
+			uint32 isolated = bits & (~bits &+ 1U);
+			uint32 index = (isolated * DeBruijn32Magic) >> 27;
+			bits &= ~isolated;
+			return .Ok((int32)sDeBruijn32Table[index]);
 		}
 	}
 

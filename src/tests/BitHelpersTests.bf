@@ -74,18 +74,18 @@ static class BitHelpersTests
     }
 
     [Test]
-    public static void GetLSBitPosition_ReturnsZeroBasedIndex()
+    public static void TrailingZeroCount32_ReturnsZeroBasedIndex()
     {
         uint32 bits = (uint32)((1U << 3) | (1U << 9));
-        Test.Assert(BitHelpers.GetLSBitPosition(bits) == 3);
-        Test.Assert(BitHelpers.GetLSBitPosition(0) == -1);
+        Test.Assert(BitHelpers.TrailingZeroCount(bits) == 3);
+        Test.Assert(BitHelpers.TrailingZeroCount((uint32)0) == 32);
     }
 
     [Test]
-    public static void GetLSBitPosition_HandlesHighestBit()
+    public static void TrailingZeroCount32_HandlesHighestBit()
     {
         uint32 bits = 1U << 31;
-        Test.Assert(BitHelpers.GetLSBitPosition(bits) == 31);
+        Test.Assert(BitHelpers.TrailingZeroCount(bits) == 31);
     }
 
     [Test]
@@ -102,6 +102,18 @@ static class BitHelpersTests
         double value = 2.718281828;
         double truncated = BitHelpers.Truncate(value, 4);
         Test.Assert(Math.Abs(truncated - 2.7182) <= DoubleEpsilon);
+    }
+
+    [Test]
+    public static void TrailingZeroCount_UsesHighWordWhenLowerIsZero()
+    {
+        uint64 highOnly = 1UL << 40; // Clears lower 32 bits, leaves a bit in the upper half
+        Test.Assert(BitHelpers.TrailingZeroCount(highOnly) == 40);
+
+        uint64 topBit = 1UL << 63;
+        Test.Assert(BitHelpers.TrailingZeroCount(topBit) == 63);
+
+        Test.Assert(BitHelpers.TrailingZeroCount((uint64)0) == 64);
     }
 
     [Test]

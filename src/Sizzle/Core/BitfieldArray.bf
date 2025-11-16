@@ -4,14 +4,13 @@ using System.Collections;
 namespace PortalEmulator.Sizzle.Core;
 
 /// @brief A single bitfield block that can track 256 bits using 4 uint64 values.
-/// @remarks Blocks can be chained together via the next pointer to form a larger bitfield.
+/// @remarks Blocks carry only their bit storage; <see cref="BitfieldArray"/> arranges them contiguously in memory.
 struct BitfieldBlock
 {
 	const int BITS_PER_BLOCK = 256;
 	const int UINT64_PER_BLOCK = 4;
 
 	public uint64[UINT64_PER_BLOCK] bits;
-	public BitfieldBlock* next;
 
 	[Inline]
 	/// @brief Sets the bit at the specified index within this block.
@@ -71,10 +70,10 @@ struct BitfieldBlock
 	public int PopCount()
 	{
 		int count = 0;
-		for (int i = 0; i < UINT64_PER_BLOCK; i++)
-		{
-			count += BitHelpers.GetBitCount(bits[i]);
-		}
+		count += BitHelpers.GetBitCount(bits[0]);
+		count += BitHelpers.GetBitCount(bits[1]);
+		count += BitHelpers.GetBitCount(bits[2]);
+		count += BitHelpers.GetBitCount(bits[3]);
 		return count;
 	}
 
@@ -83,39 +82,85 @@ struct BitfieldBlock
 	/// @returns Index of first set bit (0-255), or -1 if no bits are set.
 	public int FindFirstSet()
 	{
-		for (int i = 0; i < UINT64_PER_BLOCK; i++)
-		{
-			if (bits[i] != 0)
-			{
-				// Find first set bit in this word
-				int bitIdx = BitHelpers.TrailingZeroCount(bits[i]);
-				return (i * 64) + bitIdx;
-			}
-		}
-		return -1;
+		// Determine if each word is non-zero.
+		int w0_nz = (bits[0] != 0) ? 1 : 0;
+		int w1_nz = (bits[1] != 0) ? 1 : 0;
+		int w2_nz = (bits[2] != 0) ? 1 : 0;
+		int w3_nz = (bits[3] != 0) ? 1 : 0;
+
+		// Determine which word is the FIRST non-zero word.
+		// w0_sel will be 1 if bits[0] is the first, otherwise 0.
+		// w1_sel will be 1 if bits[1] is the first, otherwise 0. And so on.
+		int w0_sel = w0_nz;
+		int w1_sel = w1_nz & (1 - w0_nz); // Select if w1 is non-zero AND w0 was zero.
+		int w2_sel = w2_nz & (1 - (w0_nz | w1_nz)); // Select if w2 is non-zero AND w0,w1 were zero.
+		int w3_sel = w3_nz & (1 - (w0_nz | w1_nz | w2_nz)); // Select if w3 is non-zero AND w0,w1,w2 were zero.
+
+		// Calculate the TrailingZeroCount for each word unconditionally.
+		// The selector logic ensures we only use the result from the correct non-zero word.
+		int tzc0 = BitHelpers.TrailingZeroCount(bits[0]);
+		int tzc1 = BitHelpers.TrailingZeroCount(bits[1]);
+		int tzc2 = BitHelpers.TrailingZeroCount(bits[2]);
+		int tzc3 = BitHelpers.TrailingZeroCount(bits[3]);
+
+		// Combine the results using the selectors. Only one selector can be 1,
+		// so this effectively picks one of the results.
+		int result = (w0_sel * tzc0)
+				+ (w1_sel * (64 + tzc1))
+				+ (w2_sel * (128 + tzc2))
+				+ (w3_sel * (192 + tzc3));
+
+		// Handle the case where no bits are set in the entire block.
+		int any_word_found = w0_nz | w1_nz | w2_nz | w3_nz; // Will be 1 if any word is non-zero, else 0.
+		int not_found_mask = any_word_found - 1; // Becomes -1 (all bits set) if nothing found, 0 otherwise.
+		
+		// If nothing was found, this ORs the result with -1. Otherwise, it ORs with 0.
+		return result | not_found_mask;
 	}
 
 	/// @brief Finds the index of the first clear bit in this block.
 	/// @returns Index of first clear bit (0-255), or -1 if all bits are set.
 	public int FindFirstClear()
 	{
-		for (int i = 0; i < UINT64_PER_BLOCK; i++)
-		{
-			if (bits[i] != ~0UL)
-			{
-				// Find first clear bit in this word
-				uint64 inverted = ~bits[i];
-				int bitIdx = BitHelpers.TrailingZeroCount(inverted);
-				return (i * 64) + bitIdx;
-			}
-		}
-		return -1;
+		// Invert the bits to find the first "clear" bit, which is now the first "set" bit.
+		uint64 b0 = ~bits[0];
+		uint64 b1 = ~bits[1];
+		uint64 b2 = ~bits[2];
+		uint64 b3 = ~bits[3];
+
+		// Determine if each inverted word is non-zero.
+		int w0_nz = (b0 != 0) ? 1 : 0;
+		int w1_nz = (b1 != 0) ? 1 : 0;
+		int w2_nz = (b2 != 0) ? 1 : 0;
+		int w3_nz = (b3 != 0) ? 1 : 0;
+
+		// The rest of the logic is identical to FindFirstSet.
+		int w0_sel = w0_nz;
+		int w1_sel = w1_nz & (1 - w0_nz);
+		int w2_sel = w2_nz & (1 - (w0_nz | w1_nz));
+		int w3_sel = w3_nz & (1 - (w0_nz | w1_nz | w2_nz));
+
+		int tzc0 = BitHelpers.TrailingZeroCount(b0);
+		int tzc1 = BitHelpers.TrailingZeroCount(b1);
+		int tzc2 = BitHelpers.TrailingZeroCount(b2);
+		int tzc3 = BitHelpers.TrailingZeroCount(b3);
+
+		int result = (w0_sel * tzc0)
+				+ (w1_sel * (64 + tzc1))
+				+ (w2_sel * (128 + tzc2))
+				+ (w3_sel * (192 + tzc3));
+
+		int any_word_found = w0_nz | w1_nz | w2_nz | w3_nz;
+		int not_found_mask = any_word_found - 1;
+		
+		return result | not_found_mask;
 	}
+
 }
 
 /// @brief Growable bitfield that maintains cache locality through colocated dynamic blocks.
-/// @remarks First block is stored inline (SOO), additional blocks are reallocated together on growth.
-struct BitfieldArray
+/// @remarks First block is stored inline (SOO) while additional blocks live in a single contiguous allocation tracked by mDynamicBlocks
+struct BitfieldArray : IDisposable
 {
 	const int BITS_PER_BLOCK = 256;
 	const int WORDS_PER_BLOCK = BITS_PER_BLOCK / 64;
@@ -123,6 +168,7 @@ struct BitfieldArray
 	const int BLOCK_SHIFT_DIVIDE = 8;
 
 	private BitfieldBlock mFirstBlock = .(); // Inline first block (small object optimization)
+	private BitfieldBlock* mDynamicBlocks; // Contiguous heap storage for additional blocks
 	private int mBlockCount; // Total blocks including first
 	private int mCapacity; // Total bits across all blocks
 
@@ -131,7 +177,7 @@ struct BitfieldArray
 	/// @brief Initializes the bitfield with a single inline block.
 	public this()
 	{
-		mFirstBlock.next = null;
+		mDynamicBlocks = null;
 		mBlockCount = 1;
 		mCapacity = BITS_PER_BLOCK;
 	}
@@ -139,11 +185,14 @@ struct BitfieldArray
 	/// @brief Releases any dynamically allocated blocks.
 	public void Dispose() mut
 	{
-		if (mFirstBlock.next != null)
+		if (mDynamicBlocks != null)
 		{
-			Internal.Free(mFirstBlock.next);
-			mFirstBlock.next = null;
+			// We only ever allocate all dynamic blocks together in a single allocation
+			// so we can just free them all at once.
+			Internal.Free(mDynamicBlocks);
+			mDynamicBlocks = null;
 		}
+		mFirstBlock.Clear();
 		mBlockCount = 0;
 		mCapacity = 0;
 	}
@@ -152,39 +201,58 @@ struct BitfieldArray
 	/// @param minBits Minimum bit capacity required.
 	public void Reserve(int minBits) mut
 	{
-		while (mCapacity < minBits)
-		{
-			GrowCapacity();
-		}
+		if (minBits <= mCapacity)
+			return;
+
+		int requiredBlockCount = Math.Max(1, (minBits + BITS_PER_BLOCK - 1) >> BLOCK_SHIFT_DIVIDE);
+		GrowCapacity(requiredBlockCount);
 	}
 
-	/// @brief Adds another block to the array, reallocating dynamic storage.
-	private void GrowCapacity() mut
+	/// @brief Grows the array to accommodate the requested block count.
+	private void GrowCapacity(int targetBlockCount) mut
 	{
-		mBlockCount++;
-		mCapacity += BITS_PER_BLOCK;
+		if (targetBlockCount <= mBlockCount)
+			return;
 
-		// Allocate new colocated block array (excluding first inline block)
-		int dynamicBlockCount = mBlockCount - 1;
-		BitfieldBlock* newBlocks = (BitfieldBlock*)Internal.Malloc(sizeof(BitfieldBlock) * dynamicBlockCount);
+		int oldBlockCount = mBlockCount;
+		int oldDynamicCount = Math.Max(oldBlockCount - 1, 0);
+		int newDynamicCount = Math.Max(targetBlockCount - 1, 0);
 
-		// Copy old dynamic blocks if they exist
-		if (mFirstBlock.next != null)
+		mBlockCount = targetBlockCount;
+		mCapacity = targetBlockCount * BITS_PER_BLOCK;
+
+		// Handle case of shrinking to zero dynamic blocks
+		if (newDynamicCount == 0)
 		{
-			Internal.MemCpy(newBlocks, mFirstBlock.next, sizeof(BitfieldBlock) * (dynamicBlockCount - 1));
-			Internal.Free(mFirstBlock.next);
+			if (mDynamicBlocks != null)
+			{
+				Internal.Free(mDynamicBlocks);
+				mDynamicBlocks = null;
+			}
+			return;
 		}
 
-		// Initialize new block
-		Internal.MemSet(&newBlocks[dynamicBlockCount - 1], 0, sizeof(BitfieldBlock));
+		// Allocate new dynamic blocks and copy existing data
+		BitfieldBlock* newBlocks = (BitfieldBlock*)Internal.Malloc(sizeof(BitfieldBlock) * newDynamicCount);
 
-		// Link blocks together
-		mFirstBlock.next = &newBlocks[0];
-		for (int i = 0; i < dynamicBlockCount - 1; i++)
+		if (oldDynamicCount > 0 && mDynamicBlocks != null)
 		{
-			newBlocks[i].next = &newBlocks[i + 1];
+			Internal.MemCpy(newBlocks, mDynamicBlocks, sizeof(BitfieldBlock) * oldDynamicCount);
+			Internal.Free(mDynamicBlocks);
 		}
-		newBlocks[dynamicBlockCount - 1].next = null;
+		else if (mDynamicBlocks != null)
+		{
+			Internal.Free(mDynamicBlocks);
+		}
+
+		// Zero out any newly allocated blocks
+		int freshlyAllocatedCount = newDynamicCount - oldDynamicCount;
+		if (freshlyAllocatedCount > 0)
+		{
+			Internal.MemSet(&newBlocks[oldDynamicCount], 0, sizeof(BitfieldBlock) * freshlyAllocatedCount);
+		}
+
+		mDynamicBlocks = newBlocks;
 	}
 
 	[Inline]
@@ -192,21 +260,14 @@ struct BitfieldArray
 	private BitfieldBlock* GetBlock(int index) mut
 	{
 		int blockIdx = index >> BLOCK_SHIFT_DIVIDE;
-
-		if (blockIdx == 0)
-			return &mFirstBlock;
-
-		// Navigate through the linked list (blocks are colocated so this is cache-friendly)
-		return &mFirstBlock.next[blockIdx - 1];
+		return blockIdx == 0 ? &mFirstBlock : &mDynamicBlocks[blockIdx - 1];
 	}
 
 	[Inline]
 	/// @brief Retrieves a block by its block index instead of bit index.
 	private static BitfieldBlock* GetBlockByIndex(ref BitfieldArray array, int blockIdx)
 	{
-		if (blockIdx == 0)
-			return &array.mFirstBlock;
-		return &array.mFirstBlock.next[blockIdx - 1];
+		return blockIdx == 0 ? &array.mFirstBlock : &array.mDynamicBlocks[blockIdx - 1];
 	}
 
 	[Inline]
@@ -253,7 +314,7 @@ struct BitfieldArray
 	{
 		mFirstBlock.Clear();
 
-		BitfieldBlock* current = mFirstBlock.next;
+		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
 			current[i].Clear();
@@ -265,7 +326,7 @@ struct BitfieldArray
 	{
 		int count = mFirstBlock.PopCount();
 
-		BitfieldBlock* current = mFirstBlock.next;
+		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
 			count += current[i].PopCount();
@@ -282,7 +343,7 @@ struct BitfieldArray
 		if (localIdx >= 0)
 			return localIdx;
 
-		BitfieldBlock* current = mFirstBlock.next;
+		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
 			localIdx = current[i].FindFirstSet();
@@ -301,7 +362,7 @@ struct BitfieldArray
 		if (localIdx >= 0)
 			return localIdx;
 
-		BitfieldBlock* current = mFirstBlock.next;
+		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
 			localIdx = current[i].FindFirstClear();
@@ -350,25 +411,39 @@ struct BitfieldArray
 		{
 			for (; mBlockIdx < mArray.mBlockCount; mBlockIdx++)
 			{
-				BitfieldBlock* blockPtr = (mBlockIdx == 0)
-					? &mArray.mFirstBlock
-					: &mArray.mFirstBlock.next[mBlockIdx - 1];
+				BitfieldBlock* blockPtr = (mBlockIdx == 0) ? &mArray.mFirstBlock : &mArray.mDynamicBlocks[mBlockIdx - 1];
 
-				for (; mWordIdx < WORDS_PER_BLOCK; mWordIdx++)
+				// Load all words for the current block.
+				uint64 word0 = blockPtr.bits[0];
+				uint64 word1 = blockPtr.bits[1];
+				uint64 word2 = blockPtr.bits[2];
+				uint64 word3 = blockPtr.bits[3];
+
+				// Create a 4-bit mask indicating which words are non-zero..
+				uint32 availableMask = ((word0 != 0) ? 1u : 0u)
+					| ((word1 != 0) ? 2u : 0u)
+					| ((word2 != 0) ? 4u : 0u)
+					| ((word3 != 0) ? 8u : 0u);
+
+				// Create a mask to ignore words we've already processed in this block.
+				uint32 consumedMask = ((uint32)1 << mWordIdx) - 1;
+				uint32 remainingMask = availableMask & ~consumedMask;
+
+				if (remainingMask != 0)
 				{
-					uint64 word = blockPtr.bits[mWordIdx];
-					if (word == 0)
-						continue;
-
-					mCurrentWord = word;
-					mBaseIndex = (mBlockIdx * BITS_PER_BLOCK) + (mWordIdx * 64);
-					mWordIdx++; // Resume search at the following word next time
+					// Find the index of the first available word.
+					int nextWordIdx = (int)BitHelpers.TrailingZeroCount((uint64)remainingMask);
+					uint64* words = &blockPtr.bits[0];
+					mCurrentWord = words[nextWordIdx];
+					int blockBaseIndex = mBlockIdx * BITS_PER_BLOCK;
+					mBaseIndex = blockBaseIndex + (nextWordIdx * 64);
+					mWordIdx = nextWordIdx + 1; // Prepare for the next search
 					return true;
 				}
 
-				mWordIdx = 0; // Exhausted this block, reset for the next block
+				// Exhausted this block, reset word index for the next block iteration.
+				mWordIdx = 0;
 			}
-
 			return false;
 		}
 	}
@@ -381,28 +456,47 @@ struct BitfieldArray
 
 	private interface IBitwiseWordOp
 	{
-		static uint64 Eval(uint64 lhsWord, uint64 rhsWord);
+		static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock);
 	}
 
 	private static struct BitwiseAndOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord & rhsWord;
+		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		{
+			destBlock.bits[0] = lhsBlock.bits[0] & rhsBlock.bits[0];
+			destBlock.bits[1] = lhsBlock.bits[1] & rhsBlock.bits[1];
+			destBlock.bits[2] = lhsBlock.bits[2] & rhsBlock.bits[2];
+			destBlock.bits[3] = lhsBlock.bits[3] & rhsBlock.bits[3];
+		}
 	}
 
 	private static struct BitwiseOrOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord | rhsWord;
+		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		{
+			destBlock.bits[0] = lhsBlock.bits[0] | rhsBlock.bits[0];
+			destBlock.bits[1] = lhsBlock.bits[1] | rhsBlock.bits[1];
+			destBlock.bits[2] = lhsBlock.bits[2] | rhsBlock.bits[2];
+			destBlock.bits[3] = lhsBlock.bits[3] | rhsBlock.bits[3];
+		}
 	}
 
 	private static struct BitwiseXorOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord ^ rhsWord;
+		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		{
+			destBlock.bits[0] = lhsBlock.bits[0] ^ rhsBlock.bits[0];
+			destBlock.bits[1] = lhsBlock.bits[1] ^ rhsBlock.bits[1];
+			destBlock.bits[2] = lhsBlock.bits[2] ^ rhsBlock.bits[2];
+			destBlock.bits[3] = lhsBlock.bits[3] ^ rhsBlock.bits[3];
+		}
 	}
 
 	/// @brief Combines two arrays word-by-word using the specified bitwise operation.
+	[Inline]
 	private static BitfieldArray CombineBinary<TOp>(ref BitfieldArray lhs, ref BitfieldArray rhs) where TOp : IBitwiseWordOp
 	{
 		int blockCount = Math.Max(lhs.mBlockCount, rhs.mBlockCount);
@@ -412,24 +506,21 @@ struct BitfieldArray
 		BitfieldArray result = .();
 		result.Reserve(blockCount * BITS_PER_BLOCK);
 
+		BitfieldBlock zeroBlock = .();
+
 		for (int blockIdx = 0; blockIdx < blockCount; blockIdx++)
 		{
 			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
-			BitfieldBlock* lhsBlock = (blockIdx < lhs.mBlockCount) ? GetBlockByIndex(ref lhs, blockIdx) : null;
-			BitfieldBlock* rhsBlock = (blockIdx < rhs.mBlockCount) ? GetBlockByIndex(ref rhs, blockIdx) : null;
-
-			for (int wordIdx = 0; wordIdx < WORDS_PER_BLOCK; wordIdx++)
-			{
-				uint64 lhsWord = (lhsBlock != null) ? lhsBlock.bits[wordIdx] : 0;
-				uint64 rhsWord = (rhsBlock != null) ? rhsBlock.bits[wordIdx] : 0;
-				destBlock.bits[wordIdx] = TOp.Eval(lhsWord, rhsWord);
-			}
+			BitfieldBlock* lhsBlock = (blockIdx < lhs.mBlockCount) ? GetBlockByIndex(ref lhs, blockIdx) : &zeroBlock;
+			BitfieldBlock* rhsBlock = (blockIdx < rhs.mBlockCount) ? GetBlockByIndex(ref rhs, blockIdx) : &zeroBlock;
+			TOp.Apply(destBlock, lhsBlock, rhsBlock);
 		}
 
 		return result;
 	}
 
 	/// @brief Produces a new array with every bit inverted relative to the source.
+	[Inline]
 	private static BitfieldArray Invert(ref BitfieldArray source)
 	{
 		if (source.mBlockCount == 0)
@@ -442,8 +533,10 @@ struct BitfieldArray
 		{
 			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
 			BitfieldBlock* srcBlock = GetBlockByIndex(ref source, blockIdx);
-			for (int wordIdx = 0; wordIdx < WORDS_PER_BLOCK; wordIdx++)
-				destBlock.bits[wordIdx] = ~srcBlock.bits[wordIdx];
+			destBlock.bits[0] = ~srcBlock.bits[0];
+			destBlock.bits[1] = ~srcBlock.bits[1];
+			destBlock.bits[2] = ~srcBlock.bits[2];
+			destBlock.bits[3] = ~srcBlock.bits[3];
 		}
 
 		return result;
