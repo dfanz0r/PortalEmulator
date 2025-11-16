@@ -7,3 +7,7 @@ StartupObject = "PortalEmulator.Program"
 
 [Configs.Debug.Win64]
 PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]
+
+
+[Configs.Release.Win64]
+PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]

@@ -3,3 +3,8 @@ Projects = {PortalEmulator = {Path = "."}, "SDL3-Beef.git" = {Git = "https://git
 
 [Workspace]
 StartupProject = "PortalEmulator"
+
+[Configs.Release.Win64]
+BfSIMDSetting = "AVX"
+AllocType = "JEMalloc"
+EmitDebugInfo = "No"
