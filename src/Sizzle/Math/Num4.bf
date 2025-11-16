@@ -117,3 +117,33 @@ internal struct Num4<T>
 	[Intrinsic("cast")]
 	public static extern explicit operator Self(v128 lhs);
 }
+
+extension Num4<T> where T : int32
+{
+	[Intrinsic("and")]
+	public static extern Self operator &(Self lhs, Self rhs);
+	[Intrinsic("and")]
+	public static extern Self operator &(Self lhs, T rhs);
+	[Intrinsic("and")]
+	public static extern Self operator &(T lhs, Self rhs);
+
+	[Intrinsic("or")]
+	public static extern Self operator |(Self lhs, Self rhs);
+	[Intrinsic("or")]
+	public static extern Self operator |(Self lhs, T rhs);
+	[Intrinsic("or")]
+	public static extern Self operator |(T lhs, Self rhs);
+
+	[Intrinsic("xor")]
+	public static extern Self operator ^(Self lhs, Self rhs);
+	[Intrinsic("xor")]
+	public static extern Self operator ^(Self lhs, T rhs);
+	[Intrinsic("xor")]
+	public static extern Self operator ^(T lhs, Self rhs);
+
+	[Intrinsic("shl")]
+	public static extern Self operator <<(Self lhs, int rhs);
+
+	[Intrinsic("sar")]
+	public static extern Self operator >>(Self lhs, int rhs);
+}

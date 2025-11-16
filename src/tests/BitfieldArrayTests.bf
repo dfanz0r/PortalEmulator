@@ -142,4 +142,46 @@ static class BitfieldArrayTests
 
 		Test.Assert(idx == expected.Count);
 	}
+
+	[Test]
+	public static void BitwiseOperators_CombineArrays()
+	{
+		BitfieldArray lhs = .();
+		defer lhs.Dispose();
+		lhs.SetBit(1);
+		lhs.SetBit(BitsPerBlock + 5);
+		lhs.SetBit((BitsPerBlock * 2) + 127);
+
+		BitfieldArray rhs = .();
+		defer rhs.Dispose();
+		rhs.SetBit(1);
+		rhs.SetBit(63);
+		rhs.SetBit((BitsPerBlock * 2) + 127);
+		rhs.SetBit((BitsPerBlock * 2) + 200);
+
+		BitfieldArray andResult = lhs & rhs;
+		defer andResult.Dispose();
+		Test.Assert(andResult.GetBit(1));
+		Test.Assert(andResult.GetBit((BitsPerBlock * 2) + 127));
+		Test.Assert(!andResult.GetBit(BitsPerBlock + 5));
+
+		BitfieldArray orResult = lhs | rhs;
+		defer orResult.Dispose();
+		Test.Assert(orResult.GetBit(63));
+		Test.Assert(orResult.GetBit(BitsPerBlock + 5));
+		Test.Assert(orResult.GetBit((BitsPerBlock * 2) + 200));
+
+		BitfieldArray xorResult = lhs ^ rhs;
+		defer xorResult.Dispose();
+		Test.Assert(!xorResult.GetBit(1));
+		Test.Assert(xorResult.GetBit(BitsPerBlock + 5));
+		Test.Assert(xorResult.GetBit((BitsPerBlock * 2) + 200));
+
+		BitfieldArray notResult = ~lhs;
+		defer notResult.Dispose();
+		Test.Assert(!notResult.GetBit(1));
+		Test.Assert(!notResult.GetBit((BitsPerBlock * 2) + 127));
+		Test.Assert(notResult.GetBit(0));
+		Test.Assert(notResult.GetBit(63));
+	}
 }

@@ -575,3 +575,81 @@ struct Vector4<T> : IEquatable<Self>, IHashable
 		return .((U)(double)x, (U)(double)y, (U)(double)z, (U)(double)w);
 	}
 }
+
+extension Vector4<T>
+	where T :
+	operator T & T,
+	operator T | T,
+	operator T ^ T,
+	operator ~ T
+{
+	/// @brief Performs a component-wise bitwise AND between two vectors.
+	[Inline]
+	public static Vector4<T> operator &(in Vector4<T> lhs, in Vector4<T> rhs) => .(lhs.x & rhs.x, lhs.y & rhs.y, lhs.z & rhs.z, lhs.w & rhs.w);
+
+	/// @brief Performs a component-wise bitwise OR between two vectors.
+	[Inline]
+	public static Vector4<T> operator |(in Vector4<T> lhs, in Vector4<T> rhs) => .(lhs.x | rhs.x, lhs.y | rhs.y, lhs.z | rhs.z, lhs.w | rhs.w);
+
+	/// @brief Performs a component-wise bitwise XOR between two vectors.
+	[Inline]
+	public static Vector4<T> operator ^(in Vector4<T> lhs, in Vector4<T> rhs) => .(lhs.x ^ rhs.x, lhs.y ^ rhs.y, lhs.z ^ rhs.z, lhs.w ^ rhs.w);
+
+	/// @brief Applies a scalar bitwise AND to each component.
+	[Inline]
+	public static Vector4<T> operator &(in Vector4<T> lhs, T rhs) => .(lhs.x & rhs, lhs.y & rhs, lhs.z & rhs, lhs.w & rhs);
+
+	/// @brief Applies a scalar bitwise OR to each component.
+	[Inline]
+	public static Vector4<T> operator |(in Vector4<T> lhs, T rhs) => .(lhs.x | rhs, lhs.y | rhs, lhs.z | rhs, lhs.w | rhs);
+
+	/// @brief Applies a scalar bitwise XOR to each component.
+	[Inline]
+	public static Vector4<T> operator ^(in Vector4<T> lhs, T rhs) => .(lhs.x ^ rhs, lhs.y ^ rhs, lhs.z ^ rhs, lhs.w ^ rhs);
+
+	/// @brief Returns the component-wise bitwise negation of this vector.
+	[Inline]
+	public static Vector4<T> operator ~(Vector4<T> value) => .(~value.x, ~value.y, ~value.z, ~value.w);
+
+	/// @brief Applies a component-wise bitwise AND in-place.
+	[Inline]
+	public void operator &=(in Vector4<T> rhs) mut
+	{
+		x &= rhs.x; y &= rhs.y; z &= rhs.z; w &= rhs.w;
+	}
+
+	/// @brief Applies a component-wise bitwise OR in-place.
+	[Inline]
+	public void operator |=(in Vector4<T> rhs) mut
+	{
+		x |= rhs.x; y |= rhs.y; z |= rhs.z; w |= rhs.w;
+	}
+
+	/// @brief Applies a component-wise bitwise XOR in-place.
+	[Inline]
+	public void operator ^=(in Vector4<T> rhs) mut
+	{
+		x ^= rhs.x; y ^= rhs.y; z ^= rhs.z; w ^= rhs.w;
+	}
+
+	/// @brief Applies a scalar bitwise AND in-place.
+	[Inline]
+	public void operator &=(T rhs) mut
+	{
+		x &= rhs; y &= rhs; z &= rhs; w &= rhs;
+	}
+
+	/// @brief Applies a scalar bitwise OR in-place.
+	[Inline]
+	public void operator |=(T rhs) mut
+	{
+		x |= rhs; y |= rhs; z |= rhs; w |= rhs;
+	}
+
+	/// @brief Applies a scalar bitwise XOR in-place.
+	[Inline]
+	public void operator ^=(T rhs) mut
+	{
+		x ^= rhs; y ^= rhs; z ^= rhs; w ^= rhs;
+	}
+}

@@ -6,5 +6,4 @@ StartupProject = "PortalEmulator"
 
 [Configs.Release.Win64]
 BfSIMDSetting = "AVX"
-AllocType = "JEMalloc"
 EmitDebugInfo = "No"

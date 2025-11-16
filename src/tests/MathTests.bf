@@ -280,6 +280,66 @@ static class MathTests
     }
 
     [Test]
+    public static void Vector_BitwiseOperators_WorkForIntegers()
+    {
+        Vector2Int v2A = .(0b1010, 0b1100);
+        Vector2Int v2B = .(0b0110, 0b0011);
+        Vector3Int v3A = .(0b1111, 0b0001, 0b0101);
+        Vector3Int v3B = .(0b0011, 0b0110, 0b1100);
+        Vector4Int v4A = .(0b11110000, 0b00001111, 0b01010101, 0b10101010);
+        Vector4Int v4B = .(0b00110011, 0b11001100, 0b11110000, 0b00001111);
+
+        var v2And = v2A & v2B;
+        Test.Assert(v2And.x == (v2A.x & v2B.x) && v2And.y == (v2A.y & v2B.y));
+        var v2Or = v2A | v2B;
+        Test.Assert(v2Or.x == (v2A.x | v2B.x) && v2Or.y == (v2A.y | v2B.y));
+        var v2Xor = v2A ^ v2B;
+        Test.Assert(v2Xor.x == (v2A.x ^ v2B.x) && v2Xor.y == (v2A.y ^ v2B.y));
+        var v2Scalar = v2A & 0b1111;
+        Test.Assert(v2Scalar.x == (v2A.x & 0b1111) && v2Scalar.y == (v2A.y & 0b1111));
+        var v2Not = ~v2A;
+        Test.Assert(v2Not.x == ~v2A.x && v2Not.y == ~v2A.y);
+        var v2Accum = v2A;
+        v2Accum &= v2B;
+        Test.Assert(v2Accum.x == v2And.x && v2Accum.y == v2And.y);
+        v2Accum |= Vector2Int(0b0100, 0b1000);
+        Test.Assert(v2Accum.x == (v2And.x | 0b0100) && v2Accum.y == (v2And.y | 0b1000));
+        v2Accum ^= Vector2Int(0b0010, 0b0001);
+        Test.Assert(v2Accum.x == ((v2And.x | 0b0100) ^ 0b0010));
+        Test.Assert(v2Accum.y == ((v2And.y | 0b1000) ^ 0b0001));
+
+        var v3And = v3A & v3B;
+        Test.Assert(v3And.x == (v3A.x & v3B.x) && v3And.y == (v3A.y & v3B.y) && v3And.z == (v3A.z & v3B.z));
+        var v3Or = v3A | 0b1111;
+        Test.Assert(v3Or.x == (v3A.x | 0b1111) && v3Or.y == (v3A.y | 0b1111) && v3Or.z == (v3A.z | 0b1111));
+        var v3Not = ~v3B;
+        Test.Assert(v3Not.x == ~v3B.x && v3Not.y == ~v3B.y && v3Not.z == ~v3B.z);
+        var v3Accum = v3A;
+        v3Accum ^= v3B;
+        Test.Assert(v3Accum.x == (v3A.x ^ v3B.x) && v3Accum.y == (v3A.y ^ v3B.y) && v3Accum.z == (v3A.z ^ v3B.z));
+        v3Accum &= 0b1010;
+        Test.Assert(v3Accum.x == ((v3A.x ^ v3B.x) & 0b1010));
+        Test.Assert(v3Accum.y == ((v3A.y ^ v3B.y) & 0b1010));
+        Test.Assert(v3Accum.z == ((v3A.z ^ v3B.z) & 0b1010));
+
+        var v4Or = v4A | v4B;
+        Test.Assert(v4Or.x == (v4A.x | v4B.x) && v4Or.y == (v4A.y | v4B.y) && v4Or.z == (v4A.z | v4B.z) && v4Or.w == (v4A.w | v4B.w));
+        var v4Xor = v4A ^ 0b11111111;
+        Test.Assert(v4Xor.x == (v4A.x ^ 0b11111111) && v4Xor.y == (v4A.y ^ 0b11111111));
+        Test.Assert(v4Xor.z == (v4A.z ^ 0b11111111) && v4Xor.w == (v4A.w ^ 0b11111111));
+        var v4Not = ~v4B;
+        Test.Assert(v4Not.x == ~v4B.x && v4Not.y == ~v4B.y && v4Not.z == ~v4B.z && v4Not.w == ~v4B.w);
+        var v4Accum = v4B;
+        v4Accum |= v4A;
+        Test.Assert(v4Accum.Equals(v4Or));
+        v4Accum ^= Vector4Int(0b01010101, 0, 0, 0);
+        Test.Assert(v4Accum.x == (v4Or.x ^ 0b01010101));
+        v4Accum &= Vector4Int(0b11111111, 0b11111111, 0b00000000, 0b11111111);
+        Test.Assert(v4Accum.x == ((v4Or.x ^ 0b01010101) & 0b11111111));
+        Test.Assert(v4Accum.z == 0);
+    }
+
+    [Test]
     public static void Matrix4x4_Multiplication()
     {
         let a = Matrix4x4<double>.Scale(Vector3<double>(2.0, 3.0, 4.0));

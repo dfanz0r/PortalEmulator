@@ -482,3 +482,81 @@ struct Vector2<T> : IEquatable<Self>, IHashable
 		return .((U)(double)x, (U)(double)y);
 	}
 }
+
+extension Vector2<T>
+	where T :
+	operator T & T,
+	operator T | T,
+	operator T ^ T,
+	operator ~ T
+{
+	/// @brief Performs a component-wise bitwise AND between two vectors.
+	[Inline]
+	public static Vector2<T> operator &(in Vector2<T> lhs, in Vector2<T> rhs) => .(lhs.x & rhs.x, lhs.y & rhs.y);
+
+	/// @brief Performs a component-wise bitwise OR between two vectors.
+	[Inline]
+	public static Vector2<T> operator |(in Vector2<T> lhs, in Vector2<T> rhs) => .(lhs.x | rhs.x, lhs.y | rhs.y);
+
+	/// @brief Performs a component-wise bitwise XOR between two vectors.
+	[Inline]
+	public static Vector2<T> operator ^(in Vector2<T> lhs, in Vector2<T> rhs) => .(lhs.x ^ rhs.x, lhs.y ^ rhs.y);
+
+	/// @brief Applies a scalar bitwise AND to every component.
+	[Inline]
+	public static Vector2<T> operator &(in Vector2<T> lhs, T rhs) => .(lhs.x & rhs, lhs.y & rhs);
+
+	/// @brief Applies a scalar bitwise OR to every component.
+	[Inline]
+	public static Vector2<T> operator |(in Vector2<T> lhs, T rhs) => .(lhs.x | rhs, lhs.y | rhs);
+
+	/// @brief Applies a scalar bitwise XOR to every component.
+	[Inline]
+	public static Vector2<T> operator ^(in Vector2<T> lhs, T rhs) => .(lhs.x ^ rhs, lhs.y ^ rhs);
+
+	/// @brief Returns the component-wise bitwise negation of this vector.
+	[Inline]
+	public static Vector2<T> operator ~(Vector2<T> value) => .(~value.x, ~value.y);
+
+	/// @brief Applies a component-wise bitwise AND in-place.
+	[Inline]
+	public void operator &=(in Vector2<T> rhs) mut
+	{
+		x &= rhs.x; y &= rhs.y;
+	}
+
+	/// @brief Applies a component-wise bitwise OR in-place.
+	[Inline]
+	public void operator |=(in Vector2<T> rhs) mut
+	{
+		x |= rhs.x; y |= rhs.y;
+	}
+
+	/// @brief Applies a component-wise bitwise XOR in-place.
+	[Inline]
+	public void operator ^=(in Vector2<T> rhs) mut
+	{
+		x ^= rhs.x; y ^= rhs.y;
+	}
+
+	/// @brief Applies a scalar bitwise AND in-place.
+	[Inline]
+	public void operator &=(T rhs) mut
+	{
+		x &= rhs; y &= rhs;
+	}
+
+	/// @brief Applies a scalar bitwise OR in-place.
+	[Inline]
+	public void operator |=(T rhs) mut
+	{
+		x |= rhs; y |= rhs;
+	}
+
+	/// @brief Applies a scalar bitwise XOR in-place.
+	[Inline]
+	public void operator ^=(T rhs) mut
+	{
+		x ^= rhs; y ^= rhs;
+	}
+}

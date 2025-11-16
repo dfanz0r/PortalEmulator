@@ -118,6 +118,7 @@ struct BitfieldBlock
 struct BitfieldArray
 {
 	const int BITS_PER_BLOCK = 256;
+	const int WORDS_PER_BLOCK = BITS_PER_BLOCK / 64;
 	const int BITS_PER_BLOCK_MASK = BITS_PER_BLOCK - 1;
 	const int BLOCK_SHIFT_DIVIDE = 8;
 
@@ -197,6 +198,15 @@ struct BitfieldArray
 
 		// Navigate through the linked list (blocks are colocated so this is cache-friendly)
 		return &mFirstBlock.next[blockIdx - 1];
+	}
+
+	[Inline]
+	/// @brief Retrieves a block by its block index instead of bit index.
+	private static BitfieldBlock* GetBlockByIndex(ref BitfieldArray array, int blockIdx)
+	{
+		if (blockIdx == 0)
+			return &array.mFirstBlock;
+		return &array.mFirstBlock.next[blockIdx - 1];
 	}
 
 	[Inline]
@@ -317,47 +327,49 @@ struct BitfieldArray
 			mArray = array;
 			mBlockIdx = 0;
 			mWordIdx = 0;
-			mCurrentWord = array.mFirstBlock.bits[0];
+			mCurrentWord = 0;
 			mBaseIndex = 0;
 		}
 
 		/// @brief Advances the enumerator and reports the next set bit index.
 		public Result<int> GetNext() mut
 		{
-			while (true)
+			if (mCurrentWord == 0)
 			{
-				// Process current word
-				if (mCurrentWord != 0)
-				{
-					int bitIdx = BitHelpers.TrailingZeroCount(mCurrentWord);
-					mCurrentWord &= mCurrentWord - 1; // Clear lowest set bit
-					return .Ok(mBaseIndex + bitIdx);
-				}
-
-				// Move to next word
-				mWordIdx++;
-				if (mWordIdx < 4)
-				{
-					mBaseIndex = (mBlockIdx * BITS_PER_BLOCK) + (mWordIdx * 64);
-					if (mBlockIdx == 0)
-						mCurrentWord = mArray.mFirstBlock.bits[mWordIdx];
-					else
-						mCurrentWord = mArray.mFirstBlock.next[mBlockIdx - 1].bits[mWordIdx];
-					continue;
-				}
-
-				// Move to next block
-				mBlockIdx++;
-				if (mBlockIdx >= mArray.mBlockCount)
+				if (!AdvanceToNextWord())
 					return .Err;
-
-				mWordIdx = 0;
-				mBaseIndex = mBlockIdx * BITS_PER_BLOCK;
-				if (mBlockIdx == 0)
-					mCurrentWord = mArray.mFirstBlock.bits[0];
-				else
-					mCurrentWord = mArray.mFirstBlock.next[mBlockIdx - 1].bits[0];
 			}
+
+			int bitIdx = BitHelpers.TrailingZeroCount(mCurrentWord);
+			mCurrentWord &= mCurrentWord - 1; // Clear lowest set bit
+			return .Ok(mBaseIndex + bitIdx);
+		}
+
+		/// @brief Loads the next block/word combination that contains at least one set bit.
+		private bool AdvanceToNextWord() mut
+		{
+			for (; mBlockIdx < mArray.mBlockCount; mBlockIdx++)
+			{
+				BitfieldBlock* blockPtr = (mBlockIdx == 0)
+					? &mArray.mFirstBlock
+					: &mArray.mFirstBlock.next[mBlockIdx - 1];
+
+				for (; mWordIdx < WORDS_PER_BLOCK; mWordIdx++)
+				{
+					uint64 word = blockPtr.bits[mWordIdx];
+					if (word == 0)
+						continue;
+
+					mCurrentWord = word;
+					mBaseIndex = (mBlockIdx * BITS_PER_BLOCK) + (mWordIdx * 64);
+					mWordIdx++; // Resume search at the following word next time
+					return true;
+				}
+
+				mWordIdx = 0; // Exhausted this block, reset for the next block
+			}
+
+			return false;
 		}
 	}
 
@@ -365,5 +377,106 @@ struct BitfieldArray
 	public SetBitEnumerator GetEnumerator() mut
 	{
 		return SetBitEnumerator(&this);
+	}
+
+	private interface IBitwiseWordOp
+	{
+		static uint64 Eval(uint64 lhsWord, uint64 rhsWord);
+	}
+
+	private static struct BitwiseAndOp : IBitwiseWordOp
+	{
+		[Inline]
+		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord & rhsWord;
+	}
+
+	private static struct BitwiseOrOp : IBitwiseWordOp
+	{
+		[Inline]
+		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord | rhsWord;
+	}
+
+	private static struct BitwiseXorOp : IBitwiseWordOp
+	{
+		[Inline]
+		public static uint64 Eval(uint64 lhsWord, uint64 rhsWord) => lhsWord ^ rhsWord;
+	}
+
+	/// @brief Combines two arrays word-by-word using the specified bitwise operation.
+	private static BitfieldArray CombineBinary<TOp>(ref BitfieldArray lhs, ref BitfieldArray rhs) where TOp : IBitwiseWordOp
+	{
+		int blockCount = Math.Max(lhs.mBlockCount, rhs.mBlockCount);
+		if (blockCount == 0)
+			return BitfieldArray();
+
+		BitfieldArray result = .();
+		result.Reserve(blockCount * BITS_PER_BLOCK);
+
+		for (int blockIdx = 0; blockIdx < blockCount; blockIdx++)
+		{
+			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
+			BitfieldBlock* lhsBlock = (blockIdx < lhs.mBlockCount) ? GetBlockByIndex(ref lhs, blockIdx) : null;
+			BitfieldBlock* rhsBlock = (blockIdx < rhs.mBlockCount) ? GetBlockByIndex(ref rhs, blockIdx) : null;
+
+			for (int wordIdx = 0; wordIdx < WORDS_PER_BLOCK; wordIdx++)
+			{
+				uint64 lhsWord = (lhsBlock != null) ? lhsBlock.bits[wordIdx] : 0;
+				uint64 rhsWord = (rhsBlock != null) ? rhsBlock.bits[wordIdx] : 0;
+				destBlock.bits[wordIdx] = TOp.Eval(lhsWord, rhsWord);
+			}
+		}
+
+		return result;
+	}
+
+	/// @brief Produces a new array with every bit inverted relative to the source.
+	private static BitfieldArray Invert(ref BitfieldArray source)
+	{
+		if (source.mBlockCount == 0)
+			return BitfieldArray();
+
+		BitfieldArray result = .();
+		result.Reserve(source.mBlockCount * BITS_PER_BLOCK);
+
+		for (int blockIdx = 0; blockIdx < source.mBlockCount; blockIdx++)
+		{
+			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
+			BitfieldBlock* srcBlock = GetBlockByIndex(ref source, blockIdx);
+			for (int wordIdx = 0; wordIdx < WORDS_PER_BLOCK; wordIdx++)
+				destBlock.bits[wordIdx] = ~srcBlock.bits[wordIdx];
+		}
+
+		return result;
+	}
+
+	/// @brief Returns a new array containing the bitwise AND of both operands.
+	public static BitfieldArray operator &(BitfieldArray lhs, BitfieldArray rhs)
+	{
+		BitfieldArray lhsCopy = lhs;
+		BitfieldArray rhsCopy = rhs;
+		return CombineBinary<BitwiseAndOp>(ref lhsCopy, ref rhsCopy);
+	}
+
+	/// @brief Returns a new array containing the bitwise OR of both operands.
+	public static BitfieldArray operator |(BitfieldArray lhs, BitfieldArray rhs)
+	{
+		BitfieldArray lhsCopy = lhs;
+		BitfieldArray rhsCopy = rhs;
+		return CombineBinary<BitwiseOrOp>(ref lhsCopy, ref rhsCopy);
+	}
+
+	/// @brief Returns a new array containing the bitwise XOR of both operands.
+	public static BitfieldArray operator ^(BitfieldArray lhs, BitfieldArray rhs)
+	{
+		BitfieldArray lhsCopy = lhs;
+		BitfieldArray rhsCopy = rhs;
+		return CombineBinary<BitwiseXorOp>(ref lhsCopy, ref rhsCopy);
+	}
+
+	/// @brief Returns a new array whose bits are inverted relative to the source array.
+	public static BitfieldArray operator ~(BitfieldArray value)
+	{
+		BitfieldArray valueCopy = value;
+		return Invert(ref valueCopy);
 	}
 }
