@@ -377,19 +377,18 @@ struct BitfieldArray : IDisposable
 	public struct SetBitEnumerator : IEnumerator<int>
 	{
 		private BitfieldArray* mArray;
-		private int mBlockIdx;
-		private int mWordIdx;
 		private uint64 mCurrentWord;
-		private int mBaseIndex;
+		private int mNextGlobalWordIdx; // The single, multi-block spanning word index.
+		private const int WORDS_PER_BLOCK = 4;
+		private const int WORD_BLOCK_SHIFT = 2;
+		private const int WORD_IN_BLOCK_MASK = 3;
 
 		/// @brief Creates an enumerator for the provided array.
 		public this(BitfieldArray* array)
 		{
 			mArray = array;
-			mBlockIdx = 0;
-			mWordIdx = 0;
 			mCurrentWord = 0;
-			mBaseIndex = 0;
+			mNextGlobalWordIdx = 0;
 		}
 
 		/// @brief Advances the enumerator and reports the next set bit index.
@@ -397,54 +396,46 @@ struct BitfieldArray : IDisposable
 		{
 			if (mCurrentWord == 0)
 			{
+				// Find the next word in the entire array that has bits set.
 				if (!AdvanceToNextWord())
-					return .Err;
+					return .Err; // No more set bits anywhere.
 			}
 
+			// At this point, mCurrentWord is guaranteed to be non-zero.
 			int bitIdx = BitHelpers.TrailingZeroCount(mCurrentWord);
-			mCurrentWord &= mCurrentWord - 1; // Clear lowest set bit
-			return .Ok(mBaseIndex + bitIdx);
+			mCurrentWord &= mCurrentWord - 1; // Clear the lowest set bit to consume it.
+
+			// The base index is the start of the word we *just* found.
+			// Since mNextGlobalWordIdx was already advanced, we subtract 1.
+			int baseIndex = (mNextGlobalWordIdx - 1) * 64;
+			return .Ok(baseIndex + bitIdx);
 		}
 
-		/// @brief Loads the next block/word combination that contains at least one set bit.
+		/// @brief Finds the next word in the array that contains at least one set bit.
 		private bool AdvanceToNextWord() mut
 		{
-			for (; mBlockIdx < mArray.mBlockCount; mBlockIdx++)
+			int totalWords = mArray.mBlockCount * WORDS_PER_BLOCK;
+
+			// Linearly scan through all remaining words in the entire array.
+			for (; mNextGlobalWordIdx < totalWords; mNextGlobalWordIdx++)
 			{
-				BitfieldBlock* blockPtr = (mBlockIdx == 0) ? &mArray.mFirstBlock : &mArray.mDynamicBlocks[mBlockIdx - 1];
+				// Decompose the global index into block and word-in-block indices.
+				int blockIdx = mNextGlobalWordIdx >> WORD_BLOCK_SHIFT;
+				int wordInBlockIdx = mNextGlobalWordIdx & WORD_IN_BLOCK_MASK;
 
-				// Load all words for the current block.
-				uint64 word0 = blockPtr.bits[0];
-				uint64 word1 = blockPtr.bits[1];
-				uint64 word2 = blockPtr.bits[2];
-				uint64 word3 = blockPtr.bits[3];
+				// Get the correct block pointer.
+				BitfieldBlock* blockPtr = (blockIdx == 0) ? &mArray.mFirstBlock : &mArray.mDynamicBlocks[blockIdx - 1];
+				uint64 word = blockPtr.bits[wordInBlockIdx];
 
-				// Create a 4-bit mask indicating which words are non-zero..
-				uint32 availableMask = ((word0 != 0) ? 1u : 0u)
-					| ((word1 != 0) ? 2u : 0u)
-					| ((word2 != 0) ? 4u : 0u)
-					| ((word3 != 0) ? 8u : 0u);
-
-				// Create a mask to ignore words we've already processed in this block.
-				uint32 consumedMask = ((uint32)1 << mWordIdx) - 1;
-				uint32 remainingMask = availableMask & ~consumedMask;
-
-				if (remainingMask != 0)
+				if (word != 0)
 				{
-					// Find the index of the first available word.
-					int nextWordIdx = (int)BitHelpers.TrailingZeroCount((uint64)remainingMask);
-					uint64* words = &blockPtr.bits[0];
-					mCurrentWord = words[nextWordIdx];
-					int blockBaseIndex = mBlockIdx * BITS_PER_BLOCK;
-					mBaseIndex = blockBaseIndex + (nextWordIdx * 64);
-					mWordIdx = nextWordIdx + 1; // Prepare for the next search
+					mCurrentWord = word;
+					mNextGlobalWordIdx++; // Advance the index for the *next* search.
 					return true;
 				}
-
-				// Exhausted this block, reset word index for the next block iteration.
-				mWordIdx = 0;
 			}
-			return false;
+
+			return false; // Reached the end of the array.
 		}
 	}
 
