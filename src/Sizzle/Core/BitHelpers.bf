@@ -48,10 +48,7 @@ public static class BitHelpers
 		// bits & (~bits + 1)    good for unsigned values emulates twos complement negation on unsigned values
 
 		T one = (T)1;
-		unchecked
-		{
-			return (T)(bits & (~(bits &- one)));
-		}
+		return (T)(bits & (~(bits &- one)));
 	}
 
 	/// @brief Returns the Nth set bit within the mask.
