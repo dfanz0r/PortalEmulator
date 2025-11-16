@@ -65,13 +65,15 @@ class GameEntity
 	/// @brief Destroys the entity and deletes all attached component instances.
 	public ~this()
 	{
-		// Free all components in reverse order
-		while (Components.Count > 0)
+		// Release all active components via the component registries
+		for (int typeIndex = 1; typeIndex < MaxComponents; typeIndex++)
 		{
-			var instance = Components.PopBack();
-			if (instance == null) continue;
-			delete instance;
+			if (SlotMapping[typeIndex] > 0)
+				RemoveComponentForTypeIndex(typeIndex);
 		}
+
+		while (Components.Count > 0)
+			Components.PopBack();
 		delete Components;
 	}
 
@@ -156,19 +158,30 @@ class GameEntity
 	private void InternalComponentRemove<T>() where T : IGameComponent, class, new
 	{
 		var slotIndex =  T.InternalTypeId + 1; // internal id's start at 0
-		var slot = SlotMapping[slotIndex];
+		RemoveComponentForTypeIndex(slotIndex);
+	}
+
+	/// @brief Removes the component backing the provided slot index and releases its storage appropriately.
+	private void RemoveComponentForTypeIndex(int slotIndex)
+	{
+		int slot = SlotMapping[slotIndex];
+		if (slot <= 0)
+			return;
+
 		var component = Components[slot];
-
 		Components[slot] = null;
-		SlotMapping[slotIndex] = -slot;
+		SlotMapping[slotIndex] = (int8)(-slot);
 
-		delete component;
+		if (component == null)
+			return;
+
+		ComponentSystem.FreeComponent((int8)(slotIndex - 1), component);
 	}
 
 	/// @brief Creates and attaches a new component of the specified type.
 	/// @param componentOut Receives the created component on success, null on failure.
 	/// @returns True if the component was created; false if one already exists.
-	public bool TryCreateComponent<T>(out T componentOut) where T : IGameComponent, class, new
+	public bool TryCreateComponent<T>(out T componentOut) where T : IGameComponent, class, new, delete
 	{
 		if (HasComponentType<T>())
 		{
@@ -176,25 +189,13 @@ class GameEntity
 			return false;
 		}
 
-		// TODO - Allocate the component inside the proper object arena
-		T instance = new T();
+		// Allocate the component from the shared registry slab allocator
+		var registry = ComponentSystem.GetRegistry<T>();
+		T instance = registry.Allocate();
 		InternalComponentSet(instance);
 
 		componentOut = instance;
 		return componentOut != null;
-	}
-
-	/// @brief Attaches an existing component instance to this entity.
-	/// @param instance Component to attach (must not already belong to another entity).
-	/// @returns True if attached successfully; false if null, duplicate type, or already owned.
-	public bool TryAddComponent<T>(T instance) where T : IGameComponent, class, new
-	{
-		if (instance == null || HasComponentType<T>() || instance.EntityId != 0)
-		{
-			return false;
-		}
-		InternalComponentSet(instance);
-		return true;
 	}
 
 	/// @brief Retrieves a component of the specified type if it exists.

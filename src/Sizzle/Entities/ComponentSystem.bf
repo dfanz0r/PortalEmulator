@@ -231,9 +231,14 @@ struct SlabAllocator<T> : ITypedAllocator, IDisposable
 	}
 }
 
+interface IComponentRegistryUntyped
+{
+	void FreeUntyped(IGameComponent component);
+}
+
 /// @brief Dense component registry backed by the slab allocator for storage.
 /// @details Tracks active slots via a bitfield so iteration touches only live components.
-class ComponentRegistry<T> where T : class, new, delete
+class ComponentRegistry<T> : IComponentRegistryUntyped where T : class, new, delete
 {
 	private SlabAllocator<T> mAllocator ~ _.Dispose(); // Slab allocator for component memory
 	private T* mComponents; // Dense array of all component slots
@@ -365,6 +370,12 @@ class ComponentRegistry<T> where T : class, new, delete
 	{
 		return Enumerator(this);
 	}
+
+	/// @brief Releases a component instance without requiring its concrete type at the call-site.
+	public void FreeUntyped(IGameComponent component)
+	{
+		Free((T)component);
+	}
 }
 
 /// @brief Global component system keyed by compile-time internal component IDs.
@@ -374,14 +385,14 @@ static class ComponentSystem
 	private const int MAX_COMPONENT_TYPES = 64;
 
 	// Array of type-erased registries, indexed by component InternalTypeId
-	private static Object[MAX_COMPONENT_TYPES] sRegistries = .() ~ Shutdown();
+	private static IComponentRegistryUntyped[MAX_COMPONENT_TYPES] sRegistries = .() ~ Shutdown();
 	private static bool sIsShutdown = false;
 
 	/// @brief Retrieves (or lazily creates) the registry for component type <c>T</c>.
 	public static ComponentRegistry<T> GetRegistry<T>() where T : class, IGameComponent, new, delete
 	{
 		if (sIsShutdown)
-			 sIsShutdown = false;
+			sIsShutdown = false;
 
 		// Get component ID
 		int8 typeId = T.InternalTypeId;
@@ -394,6 +405,19 @@ static class ComponentSystem
 		}
 
 		return (ComponentRegistry<T>)sRegistries[typeId];
+	}
+
+	/// @brief Releases a component previously allocated via the registry identified by <c>typeId</c>.
+	public static void FreeComponent(int8 typeId, IGameComponent component)
+	{
+		if (component == null)
+			return;
+
+		Runtime.Assert(typeId >= 0 && typeId < MAX_COMPONENT_TYPES, "Invalid component type ID");
+		Runtime.Assert(!sIsShutdown, "ComponentSystem has already been shut down");
+		var registry = sRegistries[typeId];
+		Runtime.Assert(registry != null, "Component registry not initialized");
+		registry.FreeUntyped(component);
 	}
 
 	/// @brief Disposes all registries and releases component memory.
