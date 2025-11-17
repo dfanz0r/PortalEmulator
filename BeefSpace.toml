@@ -1,9 +1,8 @@
 FileVersion = 1
-Projects = {PortalEmulator = {Path = "."}, "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}}
+Projects = {PortalEmulator = {Path = "./PortalEmulator"}, Sizzle = {Path = "./Sizzle"}, "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}}
 
 [Workspace]
 StartupProject = "PortalEmulator"
 
 [Configs.Release.Win64]
 BfSIMDSetting = "AVX"
-EmitDebugInfo = "No"

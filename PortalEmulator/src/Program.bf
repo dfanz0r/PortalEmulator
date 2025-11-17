@@ -7,6 +7,7 @@ using Sizzle.Core;
 using Sizzle.Rendering.GPU;
 using SDL3;
 using SDL3_shadercross;
+using PortalEmulator.Sizzle.Core;
 
 namespace PortalEmulator;
 
@@ -14,14 +15,35 @@ class Program
 {
 	public static void Main()
 	{
-		SDL_Init(.SDL_INIT_VIDEO);
-		defer SDL_Quit();
+		Vector4<double> testVec = .(1, 1, 1, 1);
 
-		if (!SDL_ShaderCross_Init())
+		Vector4<double> testVec2 = .(2, 2, 2, 2);
+
+		Vector4<double> output = testVec * testVec2;
+
+
+		BitfieldArray bitfield = .();
+
+		for (int i = 0; i < 1000; i += 3)
 		{
-			Console.WriteLine("Failed to initialize SDL_shadercross.");
-			return;
+			bitfield.SetBit(i);
 		}
+
+		BitfieldArray bitfield2 = .();
+
+		for (int i = 0; i < 1000; i += 5)
+		{
+			bitfield2.SetBit(i);
+		}
+
+		BitfieldArray bitfield3 = bitfield ^ bitfield2;
+
+		for (let index in bitfield3)
+		{
+			Console.WriteLine($"Bit set at index: {index}");
+		}
+
+		Console.WriteLine($"{output.x} {output.y} {output.z} {output.w}");
 		defer SDL_ShaderCross_Quit();
 
 		var win = new Window("Sizzle Engine", 1280, 720);
@@ -40,9 +62,9 @@ class Program
 
 		// Create and Upload Vertex Buffer
 		float[] vertexData = new .(
-			0.0f, -0.5f,    1.0f, 0.0f, 0.0f, 1.0f,
-			0.5f,  0.5f,    0.0f, 1.0f, 0.0f, 1.0f,
-			-0.5f,  0.5f,    0.0f, 0.0f, 1.0f, 1.0f
+			0.0f, -0.5f,  1.0f, 0.0f, 0.0f, 1.0f,
+			0.5f,  0.5f,  0.0f, 1.0f, 0.0f, 1.0f,
+			-0.5f, 0.5f,  0.0f, 0.0f, 1.0f, 1.0f
 			);
 		defer delete vertexData;
 		uint32 dataSize = (uint32)(vertexData.Count * sizeof(float));
@@ -68,7 +90,10 @@ class Program
 		// Create Shaders
 		var vertSource = new String();
 		defer delete vertSource;
-		switch (File.ReadAllText("assets/shaders/simple.vert.hlsl", vertSource))
+		String vertPath = new String();
+		defer delete vertPath;
+		Utils.GetAssetPath(vertPath, "shaders/simple.vert.hlsl");
+		switch (File.ReadAllText(vertPath, vertSource))
 		{
 		case .Ok: break; // Success, vertSource is now populated
 		case .Err(let err):
@@ -78,7 +103,10 @@ class Program
 
 		var fragSource = new String();
 		defer delete fragSource;
-		switch (File.ReadAllText("assets/shaders/simple.frag.hlsl", fragSource))
+		var fragPath = new String();
+		defer delete fragPath;
+		Utils.GetAssetPath(fragPath, "shaders/simple.frag.hlsl");
+		switch (File.ReadAllText(fragPath, fragSource))
 		{
 		case .Ok: break; // Success, fragSource is now populated
 		case .Err(let err):
@@ -153,4 +181,6 @@ class Program
 			}
 		}
 	}
+
 }
+

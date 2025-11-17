@@ -1,0 +1,5 @@
+FileVersion = 1
+Dependencies = {corlib = "*", "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}}
+
+[Project]
+Name = "Sizzle"

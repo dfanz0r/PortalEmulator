@@ -1,5 +1,5 @@
 FileVersion = 1
-Dependencies = {corlib = "*", "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}}
+Dependencies = {corlib = "*", "SDL3-Beef.git" = {Git = "https://github.com/jayrulez/SDL3-Beef.git"}, SDL3_shadercross-Beef = {Git = "https://github.com/jayrulez/SDL3_shadercross-Beef"}, Sizzle = "*"}
 
 [Project]
 Name = "PortalEmulator"
@@ -7,7 +7,6 @@ StartupObject = "PortalEmulator.Program"
 
 [Configs.Debug.Win64]
 PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]
-
 
 [Configs.Release.Win64]
 PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]
