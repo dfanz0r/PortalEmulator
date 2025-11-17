@@ -23,6 +23,7 @@ class Program
 
 
 		BitfieldArray bitfield = .();
+		defer bitfield.Dispose();
 
 		for (int i = 0; i < 1000; i += 3)
 		{
@@ -30,6 +31,7 @@ class Program
 		}
 
 		BitfieldArray bitfield2 = .();
+		defer bitfield2.Dispose();
 
 		for (int i = 0; i < 1000; i += 5)
 		{
@@ -37,6 +39,7 @@ class Program
 		}
 
 		BitfieldArray bitfield3 = bitfield ^ bitfield2;
+		defer bitfield3.Dispose();
 
 		for (let index in bitfield3)
 		{
