@@ -16,30 +16,26 @@ interface IComponentRegistryUntyped
 class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent, class, new, delete
 {
 	// TODO - We should technically be able to use the SlabAllocator memory directly instead of storing a separate array of pointers
-	// This however will require SlabAllocator to implement more features.
-
+	// This however will require SlabAllocator to implement more features such as iteration over allocated slots.
 	private SlabAllocator<T> mAllocator ~ _.Dispose(); // Slab allocator for component memory
-	private T* mComponents; // Dense array of all component slots
+	private List<T> mComponents = new .() ~ delete mComponents; // Dense array of all component slots
 	private BitfieldArray mActiveBits; // Bitfield tracking active components
-	private int mCapacity;
 	private int mActiveCount;
 
 	public int Count => mActiveCount;
-	public int Capacity => mCapacity;
+	public int Capacity => mComponents.Count;
 
-	const int INITIAL_CAPACITY = 256; // Start with one bitfield block
+	const int BLOCK_SIZE = 256; // Start with one bitfield block
 
 	/// @brief Creates a registry with the requested slab capacity.
 	/// @param slabCapacity Number of component instances to store per slab.
 	public this(int slabCapacity = 64)
 	{
 		mAllocator = .(slabCapacity);
-		mCapacity = INITIAL_CAPACITY;
 		mActiveCount = 0;
-
-		// Allocate initial component array
-		mComponents = (T*)Internal.Malloc(sizeof(T*) * mCapacity);
-		Internal.MemSet(mComponents, 0, sizeof(T*) * mCapacity);
+		mComponents.Reserve(BLOCK_SIZE);
+		for (int i = 0; i < BLOCK_SIZE; i++)
+			mComponents.Add(null);
 
 		// Initialize bitfield
 		mActiveBits = .();
@@ -57,23 +53,16 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 			}
 		}
 
-		Internal.Free(mComponents);
 		mActiveBits.Dispose();
 	}
 
 	/// @brief Expands the dense component array by one bitfield block (256 slots).
 	private void GrowCapacity()
 	{
-		int newCapacity = mCapacity + 256; // Grow by one bitfield block
+		mComponents.Reserve(mComponents.Capacity + BLOCK_SIZE);
 
-		// Reallocate component array
-		T* newComponents = (T*)Internal.Malloc(sizeof(T*) * newCapacity);
-		Internal.MemCpy(newComponents, mComponents, sizeof(T*) * mCapacity);
-		Internal.MemSet((uint8*)newComponents + (sizeof(T*) * mCapacity), 0, sizeof(T*) * 256);
-		Internal.Free(mComponents);
-		mComponents = newComponents;
-
-		mCapacity = newCapacity;
+		for (int i = 0; i < BLOCK_SIZE; i++)
+			mComponents.Add(null);
 	}
 
 	/// @brief Reserves and constructs a new component instance.
@@ -84,15 +73,14 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 		int slot = mActiveBits.FindFirstClear();
 
 		// Grow if needed
-		if (slot < 0 || slot >= mCapacity)
+		if (slot < 0 || slot >= mComponents.Count)
 		{
-			slot = mCapacity;
+			slot = mComponents.Count;
 			GrowCapacity();
 		}
 
 		// Allocate component using the slab allocator
 		T instance = new:mAllocator T();
-		mAllocator.GetSlotIndex(&instance);
 		mComponents[slot] = instance;
 		mActiveBits.SetBit(slot);
 		mActiveCount++;
@@ -116,6 +104,13 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 				return;
 			}
 		}
+	}
+	
+	/// @brief Releases a component instance without requiring its concrete type at the call-site.
+	public void FreeUntyped(IGameComponent component)
+	{
+		Runtime.Assert(component is T, "Component type mismatch in FreeUntyped");
+		Free((T)component);
 	}
 
 	/// @brief Enumerator that yields only the active components tracked by the registry.
@@ -148,11 +143,5 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 	public Enumerator GetEnumerator()
 	{
 		return Enumerator(this);
-	}
-
-	/// @brief Releases a component instance without requiring its concrete type at the call-site.
-	public void FreeUntyped(IGameComponent component)
-	{
-		Free((T)component);
 	}
 }
