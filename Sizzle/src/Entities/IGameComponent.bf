@@ -21,7 +21,7 @@ public interface IGameComponent
 
 	/// @brief The unique runtime ID of the entity this component is attached to.
 	/// @remarks Zero indicates the component is not attached to any entity.
-	uint64 EntityId { [Inline] get; [Inline] internal set; }
+	uint32 EntityId { [Inline] get; [Inline] internal set; }
 
 	/// @brief Returns the compile-time unique type identifier for this component type.
 	/// @remarks Used internally by GameEntity for slot assignment and lookup.
@@ -123,7 +123,7 @@ struct RegisterComponentAttribute : Attribute, IOnTypeInit
 		let newName = scope String(128);
 		type.GetName(newName);
 		Compiler.EmitTypeBody(type, scope $"public static int8 InternalTypeId => InternalComponentData.{newName};\n");
-		Compiler.EmitTypeBody(type, scope $"public uint64 EntityId \{ [Inline] get; [Inline] set; \}\n");
+		Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
 	}
 }
 
@@ -141,7 +141,7 @@ struct RegisterComponentPriorityAttribute<T> : RegisterComponentAttribute, IOnTy
 		let newName = scope String(128);
 		type.GetName(newName);
 		Compiler.EmitTypeBody(type, scope $"public static int8 InternalTypeId => InternalComponentData.{newName};\n");
-		Compiler.EmitTypeBody(type, scope $"public uint64 EntityId \{ [Inline] get; [Inline] set; \}\n");
+		Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
 		Compiler.EmitTypeBody(type, scope $"public static int32 InternalPriority => {T};\n");
 	}
 }

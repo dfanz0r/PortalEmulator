@@ -44,6 +44,9 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 	/// @brief Releases all active components and backing storage.
 	public ~this()
 	{
+		// TODO - Investigate freeing the whole slab allocator at once.
+		// Only issue with that is destructors? Maybe there is some optimization
+		// internally where the allocator can more optimally 
 		// Free all active components
 		for (int i in mActiveBits)
 		{
@@ -105,7 +108,7 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 			}
 		}
 	}
-	
+
 	/// @brief Releases a component instance without requiring its concrete type at the call-site.
 	public void FreeUntyped(IGameComponent component)
 	{

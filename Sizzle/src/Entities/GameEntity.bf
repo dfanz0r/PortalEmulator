@@ -3,6 +3,7 @@ using System.Threading;
 using System.Collections;
 
 using Sizzle.Core;
+using PortalEmulator.Sizzle.Core;
 
 using internal Sizzle.Entities;
 using internal Sizzle.Core;
@@ -21,22 +22,54 @@ enum EnableState : int8
 	DisabledFromParent = 2
 }
 
+// Entity ID holds both state about it's current EntityGraph and slot within the graph but it also holds the global unique id for it as well.
+// In total using only the ID it allows us to precisely locate multiple aspects of where in the engine any given entity is located.
+// As a whole the full uint64 EntityID is called the LocatorID.
+// Additionally the bits in the LocatorID are partitioned in a way that we are not wasting any IDs of any one type.
+// As such the total number of possible EntityGraphs * SlotsPerGraph = total global EntityIDs
+//
+// This imposes the following limits:
+//    - 4096 possible active EntityGraphs
+//    - 1,048,576 possible GameEntities per graph
+//    - 4,294,967,296 total unique GameEntities within the engine
+// The limits imposed are purposely larger than would typically be required but also are not insanely large and ensures
+// that we have maximum flexibility about how Entities are grouped and structured depending on the use-cases required.
+//
+// Because the EntityID can change if an object is moved between EntityGraphs API users need to be careful about keeping
+// any copies of the EntityID across any such move operations, internal engine code will manage this where required
+// And maybe it's worth providing some utilities to help with this such as a callback for when ids are changed,
+// but this can come later if ultimately required.
+// If a persistent ID is required the GlobalId should be kept to look up the active EntityID struct,
+// as these are Guaranteed to be globally unique during runtime however are potentially not unique across launches.
+// EntityGraph 0 is reserved for global persistent Entities that always persist unless explicitly destroyed
+[Union]
+public struct EntityID
+{
+	public struct
+	{
+		[Bitfield(.Public, .Bits(12), "GraphId")]
+		[Bitfield(.Public, .Bits(20), "GraphSlotId")]
+		private uint32 Value;
+		public uint32 GlobalID;
+	};
+	public uint64 LocatorID;
+}
+
 /// @brief Entity-component system container that manages up to 64 unique component types.
 /// @remarks Components are stored in a slot-based system where slots persist even after removal,
 /// allowing efficient re-addition of the same component type without reallocation.
 class GameEntity
 {
 	/// @brief Maximum number of component types that can be attached to a single entity.
-	const int MaxComponents = 64;
-
-	/// @brief Bitmask tracking which component type slots have ever been allocated (up to 64 types).
-	/// @remarks Each bit corresponds to a type ID. Set bits indicate the type has been allocated a slot.
-	private uint64 Mask = 0;
+	const int MaxComponents = 255;
 
 	/// @brief Maps component type IDs to their storage slots in the Components array.
-	/// @remarks -128 = never allocated, -127 to -1 = allocated but deleted, 1 to 127 = active component.
-	/// When a component is deleted the slot ID is negated to mark it as deleted while preserving the slot assignment.
-	private int8[MaxComponents] SlotMapping = .(?);
+	/// @remarks Once a slot is assigned for an object type they are not changed or moved.
+	/// id 0 means unallocated. In order to map slot id's to the Component array it is slotId - 1
+	private uint8[MaxComponents] SlotMapping = .();
+
+	/// @brief BitfieldArray tracking which component type slots are currently actively within the component list
+	private BitfieldArray ActiveSlots = .();
 
 	/// @brief Dense array storing actual component instances, indexed via SlotMapping.
 	/// @remarks Pre-allocates capacity for MaxComponents to minimize allocations.
@@ -44,36 +77,33 @@ class GameEntity
 
 	/// @brief Unique runtime identifier for this entity, assigned at construction.
 	/// @remarks Not persistent across application runs.
-	private uint64 runtimeEntityId;
+	private EntityID runtimeEntityId;
 
 	/// @brief Tracks the enabled state of this entity (local and inherited from parent).
 	private EnableState enabledState;
 
 	/// @brief Global counter used to generate unique entity IDs across all instances.
-	private static uint64 entityIdCursor = 0;
-
-	/// @brief Sentinel value indicating a component type has never been allocated a slot.
-	private const int8 SLOT_MISSING = -128;
+	private static uint32 globalEntityIdCursor = 0;
 
 	/// @brief Constructs a new entity with a unique runtime ID and empty component slots.
 	public this()
 	{
-		SlotMapping.SetAll(SLOT_MISSING);
-		runtimeEntityId = Interlocked.Increment(ref entityIdCursor);
+		runtimeEntityId.GlobalID = Interlocked.Increment(ref globalEntityIdCursor);
 	}
 
 	/// @brief Destroys the entity and deletes all attached component instances.
 	public ~this()
 	{
 		// Release all active components via the component registries
-		for (int typeIndex = 1; typeIndex < MaxComponents; typeIndex++)
+		for (let componentId in ActiveSlots)
 		{
-			if (SlotMapping[typeIndex] > 0)
-				RemoveComponentForTypeIndex(typeIndex);
-		}
+			var slotId = (int)SlotMapping[componentId] - 1;
 
-		while (Components.Count > 0)
-			Components.PopBack();
+			if (slotId < 0) continue;
+
+			ComponentSystem.FreeComponent((int8)componentId, Components[slotId]);
+		}
+		ActiveSlots.Dispose();
 		delete Components;
 	}
 
@@ -101,11 +131,38 @@ class GameEntity
 		get => enabledState == EnableState.Enabled;
 	}
 
+	public struct Enumerator
+	{
+		private List<IGameComponent> list;
+		private int currentPosition = 0;
+
+		internal this(List<IGameComponent> entityList)
+		{
+			list = entityList;
+		}
+
+		/// @brief Advances to the next non-null element in the collection.
+		/// @returns Ok with the next non-null element, or Err if no more elements exist.
+		public Result<IGameComponent> GetNext() mut
+		{
+			// Skip any null values in the array
+			while (currentPosition < list.Count)
+			{
+				var element = list.Ptr[currentPosition++];
+				if (element == null) continue;
+
+				return .Ok(element);
+			}
+
+			return .Err;
+		}
+	}
+
 	/// @brief Returns an iterator that skips over null component slots.
 	/// @returns Enumerator for active (non-null) components only.
-	public NullSkipEnumerator<IGameComponent> GetComponentEnumerator()
+	public Enumerator GetComponentEnumerator()
 	{
-		return NullSkipEnumerator<IGameComponent>(Components);
+		return .(Components);
 	}
 
 	/// @brief Gets the internal array index for a component type.
@@ -114,7 +171,7 @@ class GameEntity
 	[Inline]
 	public int GetComponentIndex<T>() where T : IGameComponent, class, new
 	{
-		return SlotMapping[T.InternalTypeId + 1]; // internal id's start at 0
+		return SlotMapping[T.InternalTypeId] - 1;
 	}
 
 	/// @brief Tests whether a component of the specified type is currently attached and active.
@@ -122,8 +179,8 @@ class GameEntity
 	[Inline]
 	public bool HasComponentType<T>() where T : IGameComponent, class, new
 	{
-		var typeId =  T.InternalTypeId + 1; // internal id's start at 0
-		return (Mask & (1 << typeId)) != 0 && SlotMapping[typeId] > 0;
+		var typeId =  T.InternalTypeId;
+		return ActiveSlots.GetBit(typeId) && SlotMapping[typeId] > 0;
 	}
 
 	/// @brief Internal method to attach or reactivate a component instance.
@@ -132,24 +189,28 @@ class GameEntity
 	[Inline]
 	private void InternalComponentSet<T>(T instance) where T : IGameComponent, class, new
 	{
-		var slotIndex =  T.InternalTypeId + 1; // internal id's start at 0
+		if (instance == null)
+			return;
 
-		var slot = SlotMapping[slotIndex];
-		if (slot == SLOT_MISSING)
+		var typeId =  T.InternalTypeId;
+		var slot = SlotMapping[typeId];
+
+		// if slot is 0 a slot has not yet been allocated
+		if (slot == 0)
 		{
-			// First time this type is added - allocate new slot
-			Mask |= (1 << slotIndex);
-			SlotMapping[slotIndex] = (int8)Components.Count;
+			if (Components.Count >= MaxComponents)
+				Runtime.FatalError("GameEntity component capacity exceeded");
+
+			SlotMapping[typeId] = (uint8)Components.Count + 1;
 			Components.Add(instance);
 		}
 		else
 		{
-			// Reactivate previously deleted slot
-			slot = Math.Abs(slot);
-			SlotMapping[slotIndex] = slot;
-			Components[slot] = instance;
+			// Reactivate previously removed component type
+			Components[slot - 1] = instance;
 		}
-		instance.EntityId = runtimeEntityId;
+		ActiveSlots.SetBit(typeId);
+		instance.EntityId = runtimeEntityId.GlobalID;
 	}
 
 	/// @brief Internal method to remove and delete a component, keeping its slot reserved.
@@ -157,26 +218,15 @@ class GameEntity
 	[Inline]
 	private void InternalComponentRemove<T>() where T : IGameComponent, class, new
 	{
-		var slotIndex =  T.InternalTypeId + 1; // internal id's start at 0
-		RemoveComponentForTypeIndex(slotIndex);
-	}
+		var typeId = T.InternalTypeId;
 
-	/// @brief Removes the component backing the provided slot index and releases its storage appropriately.
-	private void RemoveComponentForTypeIndex(int slotIndex)
-	{
-		int slot = SlotMapping[slotIndex];
-		if (slot <= 0)
-			return;
+		int slot = SlotMapping[typeId] - 1;
+		ActiveSlots.ClearBit(typeId);
 
-		var component = Components[slot];
+		ComponentSystem.FreeComponent(typeId, Components[slot]);
 		Components[slot] = null;
-		SlotMapping[slotIndex] = (int8)(-slot);
-
-		if (component == null)
-			return;
-
-		ComponentSystem.FreeComponent((int8)(slotIndex - 1), component);
 	}
+
 
 	/// @brief Creates and attaches a new component of the specified type.
 	/// @param componentOut Receives the created component on success, null on failure.
