@@ -7,7 +7,6 @@ using Sizzle.Core;
 using Sizzle.Rendering.GPU;
 using SDL3;
 using SDL3_shadercross;
-using PortalEmulator.Sizzle.Core;
 
 namespace PortalEmulator;
 

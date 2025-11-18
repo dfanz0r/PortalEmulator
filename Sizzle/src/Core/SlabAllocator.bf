@@ -1,6 +1,6 @@
 using System;
 using System.Collections;
-namespace PortalEmulator.Sizzle.Core;
+namespace Sizzle.Core;
 
 /// @brief Generic slab allocator optimized for fixed-size objects.
 /// @details Allocates memory in contiguous slabs and tracks free slots via a bitfield for O(1) reuse.

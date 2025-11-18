@@ -1,7 +1,7 @@
 using System;
-using Sizzle.Entities;
 using Sizzle.Math;
-namespace PortalEmulator.Sizzle.Entities;
+
+namespace Sizzle.Entities;
 
 // Always ensure that Transform has the highest priority
 [RegisterComponentPriority<-10000000>]

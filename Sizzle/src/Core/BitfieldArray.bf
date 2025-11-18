@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 
-namespace PortalEmulator.Sizzle.Core;
+namespace Sizzle.Core;
 
 /// @brief A single bitfield block that can track 256 bits using 4 uint64 values.
 /// @remarks Blocks carry only their bit storage; <see cref="BitfieldArray"/> arranges them contiguously in memory.

@@ -1,5 +1,5 @@
 using System;
-using PortalEmulator.Sizzle.Core;
+using Sizzle.Core;
 using Sizzle.Entities;
 
 namespace Sizzle.Tests;

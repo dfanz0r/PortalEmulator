@@ -3,7 +3,6 @@ using System.Threading;
 using System.Collections;
 
 using Sizzle.Core;
-using PortalEmulator.Sizzle.Core;
 
 using internal Sizzle.Entities;
 using internal Sizzle.Core;

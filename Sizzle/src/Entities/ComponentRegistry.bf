@@ -1,4 +1,4 @@
-using PortalEmulator.Sizzle.Core;
+using Sizzle.Core;
 using System.Collections;
 using System;
 namespace Sizzle.Entities;

@@ -1,6 +1,6 @@
 using System;
 using System.Collections;
-namespace PortalEmulator.Sizzle.Core;
+namespace Sizzle.Core;
 
 public static class BitHelpers
 {
