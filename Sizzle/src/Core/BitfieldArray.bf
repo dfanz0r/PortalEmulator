@@ -10,6 +10,8 @@ struct BitfieldBlock
 	const int BITS_PER_BLOCK = 256;
 	const int UINT64_PER_BLOCK = 4;
 
+	// WARNING: BitfieldBlock must remain trivially copyable. 
+	// Do not add non-POD members.
 	public uint64[UINT64_PER_BLOCK] bits;
 
 	[Inline]
@@ -170,16 +172,15 @@ struct BitfieldArray : IDisposable
 	private BitfieldBlock mFirstBlock = .(); // Inline first block (small object optimization)
 	private BitfieldBlock* mDynamicBlocks; // Contiguous heap storage for additional blocks
 	private int mBlockCount; // Total blocks including first
-	private int mCapacity; // Total bits across all blocks
 
-	public int Capacity => mCapacity;
+	[Inline]
+	public int Capacity => BITS_PER_BLOCK * mBlockCount;
 
 	/// @brief Initializes the bitfield with a single inline block.
 	public this()
 	{
 		mDynamicBlocks = null;
 		mBlockCount = 1;
-		mCapacity = BITS_PER_BLOCK;
 	}
 
 	/// @brief Releases any dynamically allocated blocks.
@@ -194,14 +195,13 @@ struct BitfieldArray : IDisposable
 		}
 		mFirstBlock.Clear();
 		mBlockCount = 0;
-		mCapacity = 0;
 	}
 
 	/// @brief Ensures capacity for at least the specified number of bits.
 	/// @param minBits Minimum bit capacity required.
 	public void Reserve(int minBits) mut
 	{
-		if (minBits <= mCapacity)
+		if (minBits <= Capacity)
 			return;
 
 		int requiredBlockCount = Math.Max(1, (minBits + BITS_PER_BLOCK - 1) >> BLOCK_SHIFT_DIVIDE);
@@ -219,7 +219,6 @@ struct BitfieldArray : IDisposable
 		int newDynamicCount = Math.Max(targetBlockCount - 1, 0);
 
 		mBlockCount = targetBlockCount;
-		mCapacity = targetBlockCount * BITS_PER_BLOCK;
 
 		// Handle case of shrinking to zero dynamic blocks
 		if (newDynamicCount == 0)
@@ -275,7 +274,7 @@ struct BitfieldArray : IDisposable
 	/// @param index Zero-based bit index.
 	public void SetBit(int index) mut
 	{
-		if (index >= mCapacity)
+		if (index >= Capacity)
 		{
 			Reserve(index + 1);
 		}
@@ -289,7 +288,7 @@ struct BitfieldArray : IDisposable
 	/// @param index Zero-based bit index.
 	public void ClearBit(int index) mut
 	{
-		if (index >= mCapacity)
+		if (index >= Capacity)
 			return;
 
 		BitfieldBlock* block = GetBlock(index);
@@ -302,7 +301,7 @@ struct BitfieldArray : IDisposable
 	/// @returns True if the bit is set; otherwise false.
 	public bool GetBit(int index) mut
 	{
-		if (index >= mCapacity)
+		if (index >= Capacity)
 			return false;
 
 		BitfieldBlock* block = GetBlock(index);
@@ -346,6 +345,8 @@ struct BitfieldArray : IDisposable
 		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
+			if (current[i].IsEmpty())
+				continue;
 			localIdx = current[i].FindFirstSet();
 			if (localIdx >= 0)
 				return ((i + 1) * BITS_PER_BLOCK) + localIdx;
@@ -365,6 +366,8 @@ struct BitfieldArray : IDisposable
 		BitfieldBlock* current = mDynamicBlocks;
 		for (int i = 0; i < mBlockCount - 1; i++)
 		{
+			if (current[i].IsFull())
+				continue;
 			localIdx = current[i].FindFirstClear();
 			if (localIdx >= 0)
 				return ((i + 1) * BITS_PER_BLOCK) + localIdx;
@@ -534,33 +537,26 @@ struct BitfieldArray : IDisposable
 	}
 
 	/// @brief Returns a new array containing the bitwise AND of both operands.
-	public static BitfieldArray operator &(BitfieldArray lhs, BitfieldArray rhs)
+	public static BitfieldArray operator &(ref BitfieldArray lhs, ref BitfieldArray rhs)
 	{
-		BitfieldArray lhsCopy = lhs;
-		BitfieldArray rhsCopy = rhs;
-		return CombineBinary<BitwiseAndOp>(ref lhsCopy, ref rhsCopy);
+		return CombineBinary<BitwiseAndOp>(ref lhs, ref rhs);
 	}
 
 	/// @brief Returns a new array containing the bitwise OR of both operands.
-	public static BitfieldArray operator |(BitfieldArray lhs, BitfieldArray rhs)
+	public static BitfieldArray operator |(ref BitfieldArray lhs, ref BitfieldArray rhs)
 	{
-		BitfieldArray lhsCopy = lhs;
-		BitfieldArray rhsCopy = rhs;
-		return CombineBinary<BitwiseOrOp>(ref lhsCopy, ref rhsCopy);
+		return CombineBinary<BitwiseOrOp>(ref lhs, ref rhs);
 	}
 
 	/// @brief Returns a new array containing the bitwise XOR of both operands.
-	public static BitfieldArray operator ^(BitfieldArray lhs, BitfieldArray rhs)
+	public static BitfieldArray operator ^(ref BitfieldArray lhs, ref BitfieldArray rhs)
 	{
-		BitfieldArray lhsCopy = lhs;
-		BitfieldArray rhsCopy = rhs;
-		return CombineBinary<BitwiseXorOp>(ref lhsCopy, ref rhsCopy);
+		return CombineBinary<BitwiseXorOp>(ref lhs, ref rhs);
 	}
 
 	/// @brief Returns a new array whose bits are inverted relative to the source array.
-	public static BitfieldArray operator ~(BitfieldArray value)
+	public static BitfieldArray operator ~(ref BitfieldArray value)
 	{
-		BitfieldArray valueCopy = value;
-		return Invert(ref valueCopy);
+		return Invert(ref value);
 	}
 }
