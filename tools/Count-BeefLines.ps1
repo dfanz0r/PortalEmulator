@@ -3,7 +3,7 @@ param(
     [Parameter(Position = 0)]
     [string]$Root,
 
-    [string[]]$SourceFolders = @('PortalEmulator\src', 'Sizzle\src'),
+    [string[]]$SourceFolders = @('PortalEmulator\src', 'Sizzle\src'. 'Benchmarks\src'),
 
     [switch]$IncludePerFile
 )
