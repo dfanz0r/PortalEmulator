@@ -184,4 +184,87 @@ static class BitfieldArrayTests
 		Test.Assert(notResult.GetBit(0));
 		Test.Assert(notResult.GetBit(63));
 	}
+
+	[Test]
+	public static void SetBit_LargeJump_ResizesCorrectly()
+	{
+		BitfieldArray bitfield = .();
+		defer bitfield.Dispose();
+
+		// Set a bit that requires resizing multiple blocks at once
+		// Initial capacity is usually small (e.g. 1 block = 256 bits)
+		// Jump to bit 10000 (approx 40 blocks)
+		int largeIndex = 10000;
+		bitfield.SetBit(largeIndex);
+
+		Test.Assert(bitfield.GetBit(largeIndex));
+		Test.Assert(bitfield.Capacity > largeIndex);
+		
+		// Verify lower bits are still clear (zero-initialized)
+		Test.Assert(!bitfield.GetBit(0));
+		Test.Assert(!bitfield.GetBit(largeIndex - 1));
+	}
+
+	[Test]
+	public static void InPlaceOperators_ModifyLhs()
+	{
+		BitfieldArray lhsTemplate = .();
+		defer lhsTemplate.Dispose();
+		lhsTemplate.SetBit(1);
+		lhsTemplate.SetBit(BitsPerBlock + 5);
+		lhsTemplate.SetBit((BitsPerBlock * 2) + 127);
+
+		BitfieldArray rhs = .();
+		defer rhs.Dispose();
+		rhs.SetBit(1);
+		rhs.SetBit(63);
+		rhs.SetBit((BitsPerBlock * 2) + 127);
+		rhs.SetBit((BitsPerBlock * 2) + 200);
+
+		// Test &=
+		{
+			BitfieldArray andLhs = .();
+			defer andLhs.Dispose();
+			// Manually copy setup
+			andLhs.SetBit(1);
+			andLhs.SetBit(BitsPerBlock + 5);
+			andLhs.SetBit((BitsPerBlock * 2) + 127);
+
+			andLhs &= rhs;
+			Test.Assert(andLhs.GetBit(1));
+			Test.Assert(andLhs.GetBit((BitsPerBlock * 2) + 127));
+			Test.Assert(!andLhs.GetBit(BitsPerBlock + 5));
+			Test.Assert(!andLhs.GetBit(63));
+		}
+
+		// Test |=
+		{
+			BitfieldArray orLhs = .();
+			defer orLhs.Dispose();
+			orLhs.SetBit(1);
+			orLhs.SetBit(BitsPerBlock + 5);
+			orLhs.SetBit((BitsPerBlock * 2) + 127);
+
+			orLhs |= rhs;
+			Test.Assert(orLhs.GetBit(63));
+			Test.Assert(orLhs.GetBit(BitsPerBlock + 5));
+			Test.Assert(orLhs.GetBit((BitsPerBlock * 2) + 200));
+			Test.Assert(orLhs.GetBit(1));
+		}
+
+		// Test ^=
+		{
+			BitfieldArray xorLhs = .();
+			defer xorLhs.Dispose();
+			xorLhs.SetBit(1);
+			xorLhs.SetBit(BitsPerBlock + 5);
+			xorLhs.SetBit((BitsPerBlock * 2) + 127);
+
+			xorLhs ^= rhs;
+			Test.Assert(!xorLhs.GetBit(1));
+			Test.Assert(xorLhs.GetBit(BitsPerBlock + 5));
+			Test.Assert(xorLhs.GetBit((BitsPerBlock * 2) + 200));
+			Test.Assert(xorLhs.GetBit(63));
+		}
+	}
 }

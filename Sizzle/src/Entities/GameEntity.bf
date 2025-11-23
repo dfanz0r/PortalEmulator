@@ -78,29 +78,74 @@ class GameEntity
 	/// @remarks Not persistent across application runs.
 	private EntityID runtimeEntityId;
 
+	public EntityID EntityId => runtimeEntityId;
+
 	/// @brief Tracks the enabled state of this entity (local and inherited from parent).
 	private EnableState enabledState;
 
 	/// @brief Global counter used to generate unique entity IDs across all instances.
 	private static uint32 globalEntityIdCursor = 0;
+	private static Dictionary<uint32, GameEntity> sGlobalIdMap = new .() ~ delete _;
+
+	public static bool TryGetEntityId(uint32 globalId, out EntityID entityId)
+	{
+		if (sGlobalIdMap == null)
+		{
+			entityId = default;
+			return false;
+		}
+		var success = sGlobalIdMap.TryGetValue(globalId, var entity);
+		entityId = entity.EntityId;
+		return success;
+	}
+
+	public static EntityID GetEntityId(uint32 globalId)
+	{
+		if (sGlobalIdMap != null && sGlobalIdMap.TryGetValue(globalId, var entity))
+		{
+			var entityId = entity.EntityId;
+			return entityId;
+		}
+
+		// If the map is null, we are likely shutting down, so return default to avoid crashing
+		if (sGlobalIdMap == null)
+			return default;
+
+		Runtime.FatalError("Failed to resolve EntityID from GlobalID");
+	}
 
 	/// @brief Constructs a new entity with a unique runtime ID and empty component slots.
-	public this()
+	public this(int32 graphId = 0)
 	{
+		runtimeEntityId.GraphId = (uint32)graphId;
+		runtimeEntityId.GraphSlotId = 0; // 0 indicates unallocated/invalid slot
 		runtimeEntityId.GlobalID = Interlocked.Increment(ref globalEntityIdCursor);
+		if (sGlobalIdMap != null)
+			sGlobalIdMap[runtimeEntityId.GlobalID] = this;
 	}
 
 	/// @brief Destroys the entity and deletes all attached component instances.
 	public ~this()
 	{
-		// Release all active components via the component registries
-		for (let componentId in ActiveSlots)
+		if (sGlobalIdMap != null)
+			sGlobalIdMap.Remove(runtimeEntityId.GlobalID);
+		if (runtimeEntityId.GraphSlotId != 0)
 		{
-			var slotId = (int)SlotMapping[componentId] - 1;
+			// GraphSlotId is 1-based, so subtract 1 to get the actual slot index
+			EntityGraph.SafeFreeSlot((int32)runtimeEntityId.GraphId, (int32)runtimeEntityId.GraphSlotId);
+		}
 
-			if (slotId < 0) continue;
+		// Release all active components via the component registries
+		if (!ComponentSystem.IsShutdown)
+		{
+			for (let componentId in ActiveSlots)
+			{
+				var slotId = (int)SlotMapping[componentId] - 1;
 
-			ComponentSystem.FreeComponent((int8)componentId, Components[slotId]);
+				if (slotId < 0) continue;
+
+				ComponentSystem.FreeComponent((int8)componentId, Components[slotId]);
+			}
 		}
 		ActiveSlots.Dispose();
 		delete Components;
@@ -113,7 +158,9 @@ class GameEntity
 	/// @param value New local enable flag. False disables the entity independent of parent state.
 	public bool EnabledSelf
 	{
+		[Inline]
 		get => !enabledState.HasFlag(EnableState.DisabledLocal);
+		[Inline]
 		set
 		{
 			// clear bit if value is true, set bit if value is false
@@ -127,6 +174,7 @@ class GameEntity
 	/// @returns True when the entity is neither locally nor parent disabled.
 	public bool Enabled
 	{
+		[Inline]
 		get => enabledState == EnableState.Enabled;
 	}
 

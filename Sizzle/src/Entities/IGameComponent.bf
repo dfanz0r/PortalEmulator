@@ -21,7 +21,9 @@ public interface IGameComponent
 
 	/// @brief The unique runtime ID of the entity this component is attached to.
 	/// @remarks Zero indicates the component is not attached to any entity.
-	uint32 EntityId { [Inline] get; [Inline] internal set; }
+	uint32 EntityId { get; internal set; }
+
+	EntityID GetEntityId();
 
 	/// @brief Returns the compile-time unique type identifier for this component type.
 	/// @remarks Used internally by GameEntity for slot assignment and lookup.
@@ -110,6 +112,12 @@ public static struct InternalComponentData
 		Compiler.EmitTypeBody(typeof(Self), names);
 	}
 }
+
+[AttributeUsage(.Class)]
+struct DontGenerateEntityIdAttribute : Attribute
+{
+}
+
 /// @brief Attribute that registers a component type and injects boilerplate IDs during compilation.
 [AttributeUsage(.Class)]
 struct RegisterComponentAttribute : Attribute, IOnTypeInit
@@ -123,7 +131,17 @@ struct RegisterComponentAttribute : Attribute, IOnTypeInit
 		let newName = scope String(128);
 		type.GetName(newName);
 		Compiler.EmitTypeBody(type, scope $"public static int8 InternalTypeId => InternalComponentData.{newName};\n");
-		Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
+
+		bool hasDontGenerate = false;
+		for (let attr in type.GetCustomAttributes())
+			if (attr.VariantType == typeof(DontGenerateEntityIdAttribute))
+				hasDontGenerate = true;
+
+		if (!hasDontGenerate)
+		{
+			Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
+			Compiler.EmitTypeBody(type, scope $"[Inline] public Sizzle.Entities.EntityID GetEntityId() => Sizzle.Entities.GameEntity.GetEntityId(EntityId);\n");
+		}
 	}
 }
 
@@ -141,7 +159,18 @@ struct RegisterComponentPriorityAttribute<T> : RegisterComponentAttribute, IOnTy
 		let newName = scope String(128);
 		type.GetName(newName);
 		Compiler.EmitTypeBody(type, scope $"public static int8 InternalTypeId => InternalComponentData.{newName};\n");
-		Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
-		Compiler.EmitTypeBody(type, scope $"public static int32 InternalPriority => {T};\n");
+
+		bool hasDontGenerate = false;
+		for (let attr in type.GetCustomAttributes())
+			if (attr.VariantType == typeof(DontGenerateEntityIdAttribute))
+				hasDontGenerate = true;
+
+		if (!hasDontGenerate)
+		{
+			Compiler.EmitTypeBody(type, scope $"public uint32 EntityId \{ [Inline] get; [Inline] set; \}\n");
+			Compiler.EmitTypeBody(type, scope $"[Inline] public Sizzle.Entities.EntityID GetEntityId() => Sizzle.Entities.GameEntity.GetEntityId(EntityId);\n");
+		}
+
+		Compiler.EmitTypeBody(type, scope $"[Inline] public static int32 InternalPriority => {T};\n");
 	}
 }

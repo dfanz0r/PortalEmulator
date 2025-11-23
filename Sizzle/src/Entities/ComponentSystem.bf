@@ -20,7 +20,7 @@ static class ComponentSystem
 	public static ComponentRegistry<T> GetRegistry<T>() where T : class, IGameComponent, new, delete
 	{
 		if (sIsShutdown)
-			sIsShutdown = false;
+			return null;
 
 		// Get component ID
 		int8 typeId = T.InternalTypeId;
@@ -38,11 +38,10 @@ static class ComponentSystem
 	/// @brief Releases a component previously allocated via the registry identified by <c>typeId</c>.
 	public static void FreeComponent(int8 typeId, IGameComponent component)
 	{
-		if (component == null)
+		if (component == null || sIsShutdown)
 			return;
 
 		Runtime.Assert(typeId >= 0 && typeId < MAX_COMPONENT_TYPES, "Invalid component type ID");
-		Runtime.Assert(!sIsShutdown, "ComponentSystem has already been shut down");
 		var registry = sRegistries[typeId];
 		Runtime.Assert(registry != null, "Component registry not initialized");
 		registry.FreeUntyped(component);
@@ -54,12 +53,17 @@ static class ComponentSystem
 		if (sIsShutdown)
 			return;
 
+		sIsShutdown = true;
+
 		for (int i = 0; i < MAX_COMPONENT_TYPES; i++)
 		{
-			delete sRegistries[i];
-			sRegistries[i] = null;
+			if (sRegistries[i] != null)
+			{
+				delete sRegistries[i];
+				sRegistries[i] = null;
+			}
 		}
-
-		sIsShutdown = true;
 	}
+
+	public static bool IsShutdown => sIsShutdown;
 }

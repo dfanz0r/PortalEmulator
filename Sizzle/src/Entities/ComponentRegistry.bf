@@ -62,7 +62,7 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 	/// @brief Expands the dense component array by one bitfield block (256 slots).
 	private void GrowCapacity()
 	{
-		mComponents.Reserve(mComponents.Capacity + BLOCK_SIZE);
+		mComponents.Reserve(mComponents.Count + BLOCK_SIZE);
 
 		for (int i = 0; i < BLOCK_SIZE; i++)
 			mComponents.Add(null);

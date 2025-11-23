@@ -1,0 +1,6 @@
+FileVersion = 1
+Dependencies = {corlib = "*", Sizzle = "*"}
+
+[Project]
+Name = "Benchmarks"
+StartupObject = "Benchmarks.Program"

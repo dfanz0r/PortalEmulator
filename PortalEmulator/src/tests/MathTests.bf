@@ -387,6 +387,116 @@ static class MathTests
         AssertVectorApprox(vec, result);
     }
 
+    [Test]
+    public static void Matrix4x4_LookAt()
+    {
+        let eye = Vector3<double>(0, 0, 10);
+        let target = Vector3<double>(0, 0, 0);
+        let up = Vector3<double>(0, 1, 0);
+
+        let view = Matrix4x4<double>.LookAt(eye, target, up);
+        
+        // View matrix should transform eye to origin
+        let transformedEye = view.TransformPoint(eye);
+        AssertVectorApprox(Vector3<double>.Zero, transformedEye);
+
+        // Target should be at (0, 0, -10) in view space (looking down -Z)
+        let transformedTarget = view.TransformPoint(target);
+        AssertVectorApprox(Vector3<double>(0, 0, -10), transformedTarget);
+    }
+
+    [Test]
+    public static void Matrix4x4_PerspectiveFov()
+    {
+        let fov = Math.PI_d / 2.0; // 90 degrees
+        let aspect = 1.0;
+        let near = 1.0;
+        let far = 100.0;
+
+        let proj = Matrix4x4<double>.PerspectiveFov(fov, aspect, near, far);
+
+        // Verify structure of perspective matrix
+        // Col 0 (x)
+        Test.Assert(proj.x.x != 0);
+        Test.Assert(proj.x.y == 0);
+        Test.Assert(proj.x.z == 0);
+        Test.Assert(proj.x.w == 0);
+
+        // Col 1 (y)
+        Test.Assert(proj.y.x == 0);
+        Test.Assert(proj.y.y != 0);
+        Test.Assert(proj.y.z == 0);
+        Test.Assert(proj.y.w == 0);
+
+        // Col 2 (z)
+        Test.Assert(proj.z.x == 0);
+        Test.Assert(proj.z.y == 0);
+        Test.Assert(proj.z.z != 0);
+        Test.Assert(proj.z.w == -1); // Standard perspective has -1 here for Z division
+
+        // Col 3 (w)
+        Test.Assert(proj.w.x == 0);
+        Test.Assert(proj.w.y == 0);
+        Test.Assert(proj.w.z != 0);
+        Test.Assert(proj.w.w == 0);
+    }
+
+    [Test]
+    public static void Matrix4x4_Ortho()
+    {
+        let width = 10.0;
+        let height = 10.0;
+        let near = 0.0;
+        let far = 100.0;
+
+        // Centered ortho
+        let ortho = Matrix4x4<double>.Ortho(-width/2, width/2, -height/2, height/2, near, far);
+
+        // Center point should stay center
+        let center = Vector3<double>(0, 0, -50);
+        let projCenter = ortho.TransformPoint(center);
+        Test.Assert(projCenter.x == 0);
+        Test.Assert(projCenter.y == 0);
+        
+        // Top-right near corner (5, 5, 0) -> (1, 1, 0) (assuming OpenGL style clip space -1..1)
+        // Or 0..1 depending on implementation.
+        // Beef implementation:
+        // scaleX = 2.0 * invWidth;
+        // scaleY = 2.0 * invHeight;
+        // scaleZ = -2.0 * invDepth;
+        // This looks like OpenGL standard (-1 to 1).
+        
+        // let corner = Vector3<double>(5, 5, -near); // Z is -near because camera looks down -Z? 
+        // Wait, Ortho implementation:
+        // scaleZ = -2.0 * invDepth;
+        // offsetZ = -(f + n) * invDepth;
+        // z' = z * scaleZ + offsetZ
+        // If z = -near (0) -> 0 * scale + offset = offset = -(100+0)/100 = -1.
+        // If z = -far (-100) -> -100 * (-2/100) + (-1) = 2 - 1 = 1.
+        // So it maps -near to -1 and -far to 1.
+        
+        let cornerPoint = Vector3<double>(5, 5, 0);
+        let projCorner = ortho.TransformPoint(cornerPoint);
+        Test.Assert(NearlyEquals(projCorner.x, 1.0, 1e-5));
+        Test.Assert(NearlyEquals(projCorner.y, 1.0, 1e-5));
+    }
+
+    [Test]
+    public static void Matrix4x4_TransformPoint_Vs_TransformVector()
+    {
+        let translate = Matrix4x4<double>.Translation(Vector3<double>(10, 20, 30));
+        
+        let v = Vector3<double>(1, 1, 1);
+        
+        // TransformPoint applies translation
+        let p = translate.TransformPoint(v);
+        AssertVectorApprox(Vector3<double>(11, 21, 31), p);
+        
+        // TransformVector ignores translation (w=0)
+        let d = translate.TransformVector(v);
+        AssertVectorApprox(Vector3<double>(1, 1, 1), d);
+    }
+
     private static void AssertVector2Approx(Vector2<double> expected, Vector2<double> actual, double epsilon = DefaultEpsilon)
     {
         Test.Assert(NearlyEquals(expected.x, actual.x, epsilon));

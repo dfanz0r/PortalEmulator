@@ -1,10 +1,16 @@
 using System;
 using System.Collections;
+using System.Numerics;
+using System.Numerics.X86;
+using Sizzle.Math;
 
 namespace Sizzle.Core;
+using internal Sizzle.Math;
+using internal Sizzle.Core;
 
 /// @brief A single bitfield block that can track 256 bits using 4 uint64 values.
 /// @remarks Blocks carry only their bit storage; <see cref="BitfieldArray"/> arranges them contiguously in memory.
+[Union]
 struct BitfieldBlock
 {
 	const int BITS_PER_BLOCK = 256;
@@ -19,9 +25,7 @@ struct BitfieldBlock
 	/// @param index Local bit index (0-255).
 	public void SetBit(int index) mut
 	{
-		int wordIdx = index >> 6; // Divide by 64
-		int bitIdx = index & 63; // Modulo 64
-		bits[wordIdx] |= 1UL << bitIdx;
+		bits[index >> 6] |= 1UL << (index & 63);
 	}
 
 	[Inline]
@@ -29,9 +33,7 @@ struct BitfieldBlock
 	/// @param index Local bit index (0-255).
 	public void ClearBit(int index) mut
 	{
-		int wordIdx = index >> 6;
-		int bitIdx = index & 63;
-		bits[wordIdx] &= ~(1UL << bitIdx);
+		bits[index >> 6] &= ~(1UL << (index & 63));
 	}
 
 	[Inline]
@@ -40,9 +42,7 @@ struct BitfieldBlock
 	/// @returns True if the bit is set; otherwise false.
 	public bool GetBit(int index)
 	{
-		int wordIdx = index >> 6;
-		int bitIdx = index & 63;
-		return (bits[wordIdx] & (1UL << bitIdx)) != 0;
+		return (bits[index >> 6] & (1UL << (index & 63))) != 0;
 	}
 
 	[Inline]
@@ -108,9 +108,9 @@ struct BitfieldBlock
 		// Combine the results using the selectors. Only one selector can be 1,
 		// so this effectively picks one of the results.
 		int result = (w0_sel * tzc0)
-				+ (w1_sel * (64 + tzc1))
-				+ (w2_sel * (128 + tzc2))
-				+ (w3_sel * (192 + tzc3));
+			+ (w1_sel * (64 + tzc1))
+			+ (w2_sel * (128 + tzc2))
+			+ (w3_sel * (192 + tzc3));
 
 		// Handle the case where no bits are set in the entire block.
 		int any_word_found = w0_nz | w1_nz | w2_nz | w3_nz; // Will be 1 if any word is non-zero, else 0.
@@ -148,13 +148,13 @@ struct BitfieldBlock
 		int tzc3 = BitHelpers.TrailingZeroCount(b3);
 
 		int result = (w0_sel * tzc0)
-				+ (w1_sel * (64 + tzc1))
-				+ (w2_sel * (128 + tzc2))
-				+ (w3_sel * (192 + tzc3));
+			+ (w1_sel * (64 + tzc1))
+			+ (w2_sel * (128 + tzc2))
+			+ (w3_sel * (192 + tzc3));
 
 		int any_word_found = w0_nz | w1_nz | w2_nz | w3_nz;
 		int not_found_mask = any_word_found - 1;
-		
+
 		return result | not_found_mask;
 	}
 
@@ -262,12 +262,14 @@ struct BitfieldArray : IDisposable
 		return blockIdx == 0 ? &mFirstBlock : &mDynamicBlocks[blockIdx - 1];
 	}
 
+	
 	[Inline]
 	/// @brief Retrieves a block by its block index instead of bit index.
-	private static BitfieldBlock* GetBlockByIndex(ref BitfieldArray array, int blockIdx)
+	private BitfieldBlock* GetBlockByIndex(int blockIdx) mut
 	{
-		return blockIdx == 0 ? &array.mFirstBlock : &array.mDynamicBlocks[blockIdx - 1];
+		return blockIdx == 0 ? &mFirstBlock : &mDynamicBlocks[blockIdx - 1];
 	}
+
 
 	[Inline]
 	/// @brief Sets a bit by global index, growing the array when necessary.
@@ -301,11 +303,7 @@ struct BitfieldArray : IDisposable
 	/// @returns True if the bit is set; otherwise false.
 	public bool GetBit(int index) mut
 	{
-		if (index >= Capacity)
-			return false;
-
-		BitfieldBlock* block = GetBlock(index);
-		return block.GetBit(index & BITS_PER_BLOCK_MASK);
+		return index >= Capacity ? false : GetBlock(index).GetBit(index & BITS_PER_BLOCK_MASK);
 	}
 
 	/// @brief Clears all bits across every block.
@@ -450,13 +448,13 @@ struct BitfieldArray : IDisposable
 
 	private interface IBitwiseWordOp
 	{
-		static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock);
+		static void Apply(ref BitfieldBlock destBlock, in BitfieldBlock lhsBlock, in BitfieldBlock rhsBlock);
 	}
 
 	private static struct BitwiseAndOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		public static void Apply(ref BitfieldBlock destBlock, in BitfieldBlock lhsBlock, in BitfieldBlock rhsBlock)
 		{
 			destBlock.bits[0] = lhsBlock.bits[0] & rhsBlock.bits[0];
 			destBlock.bits[1] = lhsBlock.bits[1] & rhsBlock.bits[1];
@@ -468,7 +466,7 @@ struct BitfieldArray : IDisposable
 	private static struct BitwiseOrOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		public static void Apply(ref BitfieldBlock destBlock, in BitfieldBlock lhsBlock, in BitfieldBlock rhsBlock)
 		{
 			destBlock.bits[0] = lhsBlock.bits[0] | rhsBlock.bits[0];
 			destBlock.bits[1] = lhsBlock.bits[1] | rhsBlock.bits[1];
@@ -480,12 +478,59 @@ struct BitfieldArray : IDisposable
 	private static struct BitwiseXorOp : IBitwiseWordOp
 	{
 		[Inline]
-		public static void Apply(BitfieldBlock* destBlock, BitfieldBlock* lhsBlock, BitfieldBlock* rhsBlock)
+		public static void Apply(ref BitfieldBlock destBlock, in BitfieldBlock lhsBlock, in BitfieldBlock rhsBlock)
 		{
 			destBlock.bits[0] = lhsBlock.bits[0] ^ rhsBlock.bits[0];
 			destBlock.bits[1] = lhsBlock.bits[1] ^ rhsBlock.bits[1];
 			destBlock.bits[2] = lhsBlock.bits[2] ^ rhsBlock.bits[2];
 			destBlock.bits[3] = lhsBlock.bits[3] ^ rhsBlock.bits[3];
+		}
+	}
+
+	/// @brief Performs an in-place bitwise AND with another array.
+	public void operator &=(BitfieldArray rhs) mut
+	{
+		int commonBlocks = Math.Min(mBlockCount, rhs.mBlockCount);
+
+		BitwiseAndOp.Apply(ref mFirstBlock, mFirstBlock, rhs.mFirstBlock);
+
+		for (int i = 0; i < commonBlocks-1; i++)
+		{
+			BitwiseAndOp.Apply(ref mDynamicBlocks[i], mDynamicBlocks[i], rhs.mDynamicBlocks[i]);
+		}
+
+		// Clear any remaining blocks in lhs that exceed rhs length
+		for (int i = commonBlocks; i < mBlockCount; i++)
+		{
+			GetBlockByIndex(i).Clear();
+		}
+	}
+
+	/// @brief Performs an in-place bitwise OR with another array.
+	public void operator |=(BitfieldArray rhs) mut
+	{
+		if (rhs.mBlockCount > mBlockCount)
+			GrowCapacity(rhs.mBlockCount);
+
+		BitwiseOrOp.Apply(ref mFirstBlock, mFirstBlock, rhs.mFirstBlock);
+
+		for (int i = 0; i < mBlockCount-1; i++)
+		{
+			BitwiseOrOp.Apply(ref mDynamicBlocks[i], mDynamicBlocks[i], rhs.mDynamicBlocks[i]);
+		}
+	}
+
+	/// @brief Performs an in-place bitwise XOR with another array.
+	public void operator ^=(BitfieldArray rhs) mut
+	{
+		if (rhs.mBlockCount > mBlockCount)
+			GrowCapacity(rhs.mBlockCount);
+
+		BitwiseXorOp.Apply(ref mFirstBlock, mFirstBlock, rhs.mFirstBlock);
+
+		for (int i = 0; i < mBlockCount-1; i++)
+		{
+			BitwiseXorOp.Apply(ref mDynamicBlocks[i], mDynamicBlocks[i], rhs.mDynamicBlocks[i]);
 		}
 	}
 
@@ -502,12 +547,20 @@ struct BitfieldArray : IDisposable
 
 		BitfieldBlock zeroBlock = .();
 
-		for (int blockIdx = 0; blockIdx < blockCount; blockIdx++)
+		// Handle first block
 		{
-			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
-			BitfieldBlock* lhsBlock = (blockIdx < lhs.mBlockCount) ? GetBlockByIndex(ref lhs, blockIdx) : &zeroBlock;
-			BitfieldBlock* rhsBlock = (blockIdx < rhs.mBlockCount) ? GetBlockByIndex(ref rhs, blockIdx) : &zeroBlock;
-			TOp.Apply(destBlock, lhsBlock, rhsBlock);
+			BitfieldBlock* lhsBlock = (lhs.mBlockCount > 0) ? &lhs.mFirstBlock : &zeroBlock;
+			BitfieldBlock* rhsBlock = (rhs.mBlockCount > 0) ? &rhs.mFirstBlock : &zeroBlock;
+			TOp.Apply(ref result.mFirstBlock, *lhsBlock, *rhsBlock);
+		}
+
+		// Handle dynamic blocks
+		for (int i = 0; i < blockCount - 1; i++)
+		{
+			BitfieldBlock* destBlock = &result.mDynamicBlocks[i];
+			BitfieldBlock* lhsBlock = (i + 1 < lhs.mBlockCount) ? &lhs.mDynamicBlocks[i] : &zeroBlock;
+			BitfieldBlock* rhsBlock = (i + 1 < rhs.mBlockCount) ? &rhs.mDynamicBlocks[i] : &zeroBlock;
+			TOp.Apply(ref *destBlock, *lhsBlock, *rhsBlock);
 		}
 
 		return result;
@@ -525,8 +578,8 @@ struct BitfieldArray : IDisposable
 
 		for (int blockIdx = 0; blockIdx < source.mBlockCount; blockIdx++)
 		{
-			BitfieldBlock* destBlock = GetBlockByIndex(ref result, blockIdx);
-			BitfieldBlock* srcBlock = GetBlockByIndex(ref source, blockIdx);
+			BitfieldBlock* destBlock = result.GetBlockByIndex(blockIdx);
+			BitfieldBlock* srcBlock = source.GetBlockByIndex(blockIdx);
 			destBlock.bits[0] = ~srcBlock.bits[0];
 			destBlock.bits[1] = ~srcBlock.bits[1];
 			destBlock.bits[2] = ~srcBlock.bits[2];

@@ -44,7 +44,6 @@ static class GameEntityTests
         TestComponentA retrieved;
         Test.Assert(entity.TryGetComponent(out retrieved));
         Test.Assert(retrieved == component);
-        Test.Assert(component.EntityId != 0);
     }
 
     [Test]

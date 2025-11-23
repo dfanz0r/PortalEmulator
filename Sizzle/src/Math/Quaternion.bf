@@ -44,12 +44,10 @@ struct Quaternion<T> : IEquatable<Self>, IHashable
 		/// @brief W component representing the scalar part.
 		public T w;
 	};
-	/// @brief Provides combined vector/scalar accessors.
 	public struct
 	{
-		/// @brief Vector (imaginary) portion of the rotation.
+		/// @brief X component of the imaginary axis.
 		public Vector3<T> vector;
-		/// @brief Scalar portion of the rotation.
 		public T scalar;
 	};
 
@@ -91,8 +89,10 @@ struct Quaternion<T> : IEquatable<Self>, IHashable
 	/// @param scalar Scalar component (W).
 	public this(in Vector3<T> vector, T scalar)
 	{
-		this.vector = vector;
-		this.scalar = scalar;
+		this.x = vector.x;
+		this.y = vector.y;
+		this.z = vector.z;
+		this.w = scalar;
 	}
 
 	/// @brief Creates a quaternion representing a rotation around an axis.
@@ -514,6 +514,9 @@ struct Quaternion<T> : IEquatable<Self>, IHashable
 	{
 		return x == rhs.x && y == rhs.y && z == rhs.z && w == rhs.w;
 	}
+
+	public static bool operator==(in Self lhs, in Self rhs) => lhs.Equals(rhs);
+	public static bool operator!=(in Self lhs, in Self rhs) => !lhs.Equals(rhs);
 
 	/// @brief Generates a hash code for the quaternion.
 	public int GetHashCode()
