@@ -1,5 +1,6 @@
 using Sizzle.Math;
 using System;
+using Sizzle.Entities;
 
 namespace Sizzle.Components;
 
@@ -23,13 +24,13 @@ public class CameraComponent : IGameComponent
 	// Shared settings
 	public float NearPlane = 0.1f;
 	public float FarPlane = 1000.0f;
-	
-	// This will be updated by the RenderSystem based on the window size
-	public float AspectRatio = 1.777f; 
 
-	public void OnStart() {}
-	public void OnEnable() {}
-	public void OnDisable() {}
+	// This will be updated by the RenderSystem based on the window size
+	public float AspectRatio = 1.777f;
+
+	public void OnStart() { }
+	public void OnEnable() { }
+	public void OnDisable() { }
 
 	public Matrix4x4 GetProjectionMatrix()
 	{
