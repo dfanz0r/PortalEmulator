@@ -103,6 +103,7 @@ static class GameSystem : ISystemInit
 			.AddVertexAttribute(4, 1, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 32)
 			.AddVertexAttribute(5, 1, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 48)
 			.AddColorTarget(SDL_GetGPUSwapchainTextureFormat(Engine.Device.GetDeviceHandle(), Engine.Window.GetWindowHandle()))
+			.SetDepthState(.SDL_GPU_TEXTUREFORMAT_D16_UNORM)
 			.SetPrimitiveType(.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST)
 			.Build(Engine.Device);
 

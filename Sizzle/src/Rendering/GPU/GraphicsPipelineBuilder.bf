@@ -97,14 +97,29 @@ public class GraphicsPipelineBuilder
 		return this;
 	}
 
+	/// @brief Configures the depth bias state.
+	/// @param constantFactor A scalar factor added to each fragment's depth value.
+	/// @param clamp The maximum depth bias of a fragment.
+	/// @param slopeFactor A scalar factor applied to a fragment's slope in depth bias calculations.
+	/// @return The builder instance for chaining.
+	public Self SetDepthBias(float constantFactor, float clamp, float slopeFactor)
+	{
+		mRasterizerState.enable_depth_bias = true;
+		mRasterizerState.depth_bias_constant_factor = constantFactor;
+		mRasterizerState.depth_bias_clamp = clamp;
+		mRasterizerState.depth_bias_slope_factor = slopeFactor;
+		return this;
+	}
+
 	/// @brief Configures the depth testing state and the format of the depth buffer.
 	/// @param format The pixel format of the depth/stencil texture this pipeline will render to.
+	/// @param testEnabled If true, the pipeline will test fragment depth against the depth buffer.
 	/// @param writeEnabled If true, the pipeline will write new depth values to the buffer.
 	/// @param compareOp The comparison function to use for the depth test.
 	/// @return The builder instance for chaining.
-	public Self SetDepthState(SDL_GPUTextureFormat format, bool writeEnabled = true, SDL_GPUCompareOp compareOp = .SDL_GPU_COMPAREOP_LESS_OR_EQUAL)
+	public Self SetDepthState(SDL_GPUTextureFormat format, bool testEnabled = true, bool writeEnabled = true, SDL_GPUCompareOp compareOp = .SDL_GPU_COMPAREOP_LESS_OR_EQUAL)
 	{
-		mDepthStencilState.enable_depth_test = true;
+		mDepthStencilState.enable_depth_test = testEnabled;
 		mDepthStencilState.enable_depth_write = writeEnabled;
 		mDepthStencilState.compare_op = compareOp;
 		mDepthStencilFormat = format;

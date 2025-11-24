@@ -5,6 +5,8 @@ namespace Sizzle.Rendering;
 public class Material
 {
 	public GraphicsPipeline Pipeline;
+	public bool IsTransparent = false;
+	public int32 SortOrder = 0;
 
 	public this(GraphicsPipeline pipeline)
 	{

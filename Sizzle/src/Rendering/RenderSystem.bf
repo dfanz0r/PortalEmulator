@@ -18,6 +18,8 @@ public static class RenderSystem
 	private static uint32 mTransferBufferCapacity = 0;
 	private static uint64 mFrameCount = 0;
 
+	private static GpuTexture mDepthTexture ~ delete _;
+
 	public static void Render()
 	{
 		mFrameCount++;
@@ -35,6 +37,13 @@ public static class RenderSystem
 		{
 			cmd.Submit();
 			return;
+		}
+
+		// Manage Depth Texture
+		if (mDepthTexture == null || mDepthTexture.Width != (uint32)Engine.Window.Size.x || mDepthTexture.Height != (uint32)Engine.Window.Size.y)
+		{
+			if (mDepthTexture != null) delete mDepthTexture;
+			mDepthTexture = Engine.Device.CreateTexture(ref TextureDescriptor((uint32)Engine.Window.Size.x, (uint32)Engine.Window.Size.y, .SDL_GPU_TEXTUREFORMAT_D16_UNORM) { Usage = .SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET });
 		}
 
 		// Collect Instance Data
@@ -100,8 +109,18 @@ public static class RenderSystem
 				LoadOp = .SDL_GPU_LOADOP_CLEAR,
 				ClearColor = SDL_FColor() { r = 0.1f, g = 0.1f, b = 0.15f, a = 1.0f }
 			};
+		
+		var depthAttachment = DepthStencilAttachmentInfo()
+			{
+				Texture = mDepthTexture,
+				DepthLoadOp = .SDL_GPU_LOADOP_CLEAR,
+				DepthStoreOp = .SDL_GPU_STOREOP_DONT_CARE,
+				ClearDepth = 1.0f,
+				Cycle = true
+			};
+
 		{
-			var renderPass = cmd.BeginRenderPass(ref colorAttachment);
+			var renderPass = cmd.BeginRenderPass(ref colorAttachment, ref depthAttachment);
 			defer delete renderPass;
 
 			// Camera setup
@@ -179,6 +198,12 @@ public static class RenderSystem
 
 	public static void Shutdown()
 	{
+		if (mDepthTexture != null)
+		{
+			delete mDepthTexture;
+			mDepthTexture = null;
+		}
+
 		if (mInstanceBuffer != null)
 		{
 			delete mInstanceBuffer;

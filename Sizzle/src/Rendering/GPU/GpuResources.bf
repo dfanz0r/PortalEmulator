@@ -125,20 +125,24 @@ public class GpuTransferBuffer : GpuResource<SDL_GPUTransferBuffer>
 public class GpuTexture : GpuResource<SDL_GPUTexture>
 {
 	private bool mIsOwned;
+	public uint32 Width { get; private set; }
+	public uint32 Height { get; private set; }
 
 	/// @brief Creates a GPU texture by wrapping an existing SDL handle.
 	/// @param device The render device.
 	/// @param handle The SDL_GPUTexture handle.
 	/// @param isOwned If true, the texture will be released when this object is destroyed.
-	public this(RenderDevice device, SDL_GPUTexture* handle, bool isOwned) : base(device)
+	public this(RenderDevice device, SDL_GPUTexture* handle, bool isOwned, uint32 width, uint32 height) : base(device)
 	{
 		mHandle = handle;
 		mIsOwned = isOwned;
+		Width = width;
+		Height = height;
 	}
 
 	/// @brief Creates a GPU texture from the SDL creation info struct.
 	public this(RenderDevice device, ref SDL_GPUTextureCreateInfo createInfo)
-		: this(device, SDL_CreateGPUTexture(device.GetDeviceHandle(), &createInfo), true)
+		: this(device, SDL_CreateGPUTexture(device.GetDeviceHandle(), &createInfo), true, createInfo.width, createInfo.height)
 	{
 		if (mHandle == null)
 		{

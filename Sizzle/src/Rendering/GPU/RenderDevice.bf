@@ -281,6 +281,6 @@ public class RenderDevice
 		{
 			return null;
 		}
-		return new GpuTexture(this, swapchainTexture, false);
+		return new GpuTexture(this, swapchainTexture, false, (uint32)window.Size.x, (uint32)window.Size.y);
 	}
 }
