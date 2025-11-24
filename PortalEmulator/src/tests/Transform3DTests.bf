@@ -2,6 +2,7 @@ using System;
 using Sizzle.Core;
 using Sizzle.Entities;
 using Sizzle.Math;
+using Sizzle.Components;
 
 namespace Sizzle.Tests;
 

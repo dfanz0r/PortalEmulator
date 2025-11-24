@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using Sizzle.Math;
 using Sizzle.Core;
+using Sizzle.Components;
 
 using internal Sizzle.Entities;
 
@@ -10,18 +11,23 @@ namespace Sizzle.Entities;
 /// @brief Manages a graph of entities, handling their hierarchy and transforms.
 /// @remarks This class implements a Structure-of-Arrays (SoA) layout for entity data to optimize cache coherence.
 /// It supports up to `MaxEntities` entities per graph.
-class EntityGraph
+class EntityGraph : ISystemInit
 {
 	/// @brief The maximum number of entities that can be managed by a single graph.
 	/// @remarks Reduced by 1 because 0 is reserved as an invalid slot ID in EntityID.
 	public const int MaxEntities = 1048575;
 
 	/// @brief Static storage for all entity graphs, indexed by graph ID.
-	private static EntityGraph[4096] sGraphs = .() ~ Shutdown();
+	private static EntityGraph[4096] sGraphs = .();
 	private static bool sIsShutdown = false;
 
+	public static void Setup()
+	{
+		sIsShutdown = false;
+	}
+
 	/// @brief Clears up all allocated entity graphs on shutdown.
-	private static void Shutdown()
+	public static void Shutdown()
 	{
 		sIsShutdown = true;
 		for (int i = 0; i < sGraphs.Count; i++)
@@ -79,6 +85,13 @@ class EntityGraph
 	/// @brief Destructor that cleans up allocated resources.
 	public ~this()
 	{
+		for (var entity in mEntities)
+		{
+			if (entity != null)
+			{
+				delete entity;
+			}
+		}
 		mAllocatedSlots.Dispose();
 		mDirtyFlags.Dispose();
 	}
@@ -109,6 +122,24 @@ class EntityGraph
 		entity.TryCreateComponent<Transform3D>(out transform);
 		TryRegisterEntity(entity);
 		return entity;
+	}
+
+	/// @brief Tries to get a component of type T from the entity associated with the given ID.
+	/// @param entityId The entity ID.
+	/// @param component The output component.
+	/// @return True if the component exists, false otherwise.
+	public bool TryGetComponent<T>(EntityID entityId, out T component) where T : class, IGameComponent, new
+	{
+		component = null;
+		int32 slotId = (int32)entityId.GraphSlotId - 1;
+		if (!mAllocatedSlots.GetBit(slotId)) return false;
+
+		GameEntity entity = mEntities[slotId];
+		if (entity != null)
+		{
+			return entity.TryGetComponent<T>(out component);
+		}
+		return false;
 	}
 
 	/// @brief Allocates a new slot for an entity in the graph.

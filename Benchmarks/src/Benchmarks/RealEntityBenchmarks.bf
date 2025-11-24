@@ -3,6 +3,7 @@ using Benchmarks.Framework;
 using Sizzle.Entities;
 using Sizzle.Math;
 using System.Collections;
+using Sizzle.Components;
 
 namespace Benchmarks.Benchmarks;
 
@@ -25,6 +26,9 @@ static class RealEntityBenchmarks
 
 	public static void Setup()
 	{
+		ComponentSystem.Setup();
+		EntityGraph.Setup();
+
 		mEntities = new .();
 
 		for (int i = 0; i < 1000; i++)
@@ -75,6 +79,7 @@ static class RealEntityBenchmarks
 		DeleteContainerAndItems!(mEntities);
 		DeleteContainerAndItems!(mTransformEntities);
 		ComponentSystem.Shutdown();
+		EntityGraph.Shutdown();
 	}
 
 	public static void RealEntity_Check()

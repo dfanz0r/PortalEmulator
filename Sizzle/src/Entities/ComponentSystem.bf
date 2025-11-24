@@ -7,16 +7,39 @@ namespace Sizzle.Entities;
 using internal Sizzle.Entities;
 
 /// @brief Global component system keyed by compile-time internal component IDs.
-static class ComponentSystem
+static class ComponentSystem : ISystemInit
 {
 	// Max 64 component types (matches GameEntity.MaxComponents)
 	private const int MAX_COMPONENT_TYPES = 64;
 
 	// Array of type-erased registries, indexed by component InternalTypeId
-	private static IComponentRegistryUntyped[MAX_COMPONENT_TYPES] sRegistries = .() ~ Shutdown();
+	private static IComponentRegistryUntyped[MAX_COMPONENT_TYPES] sRegistries = .();
 	private static bool sIsShutdown = false;
 
-	/// @brief Retrieves (or lazily creates) the registry for component type <c>T</c>.
+	public static void Setup()
+	{
+		sIsShutdown = false;
+	}
+
+	public struct RegistryEnumerator : IEnumerator<IComponentRegistryUntyped>
+	{
+		private int mIndex = 0;
+
+		public Result<IComponentRegistryUntyped> GetNext() mut
+		{
+			while (mIndex < MAX_COMPONENT_TYPES)
+			{
+				var reg = sRegistries[mIndex++];
+				if (reg != null)
+					return .Ok(reg);
+			}
+			return .Err;
+		}
+	}
+
+	public static RegistryEnumerator Registries => RegistryEnumerator();
+
+	/// @brief Retrieves (or lazily creates) the registry for component type T.
 	public static ComponentRegistry<T> GetRegistry<T>() where T : class, IGameComponent, new, delete
 	{
 		if (sIsShutdown)
@@ -35,7 +58,7 @@ static class ComponentSystem
 		return (ComponentRegistry<T>)sRegistries[typeId];
 	}
 
-	/// @brief Releases a component previously allocated via the registry identified by <c>typeId</c>.
+	/// @brief Releases a component previously allocated via the registry identified by typeId.
 	public static void FreeComponent(int8 typeId, IGameComponent component)
 	{
 		if (component == null || sIsShutdown)

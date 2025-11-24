@@ -46,6 +46,14 @@ public class RenderDevice
 		return true;
 	}
 
+	/// @brief Sets the VSync mode for the specified window.
+	/// @param window The window to set VSync for.
+	/// @param enabled True to enable VSync, false to disable (immediate).
+	public void SetVSync(Window window, bool enabled)
+	{
+		SDL_SetGPUSwapchainParameters(device, window.GetWindowHandle(), .SDL_GPU_SWAPCHAINCOMPOSITION_SDR, enabled ? .SDL_GPU_PRESENTMODE_VSYNC : .SDL_GPU_PRESENTMODE_IMMEDIATE);
+	}
+
 	/// @brief Destroys the GPU device and releases all associated resources.
 	public ~this()
 	{

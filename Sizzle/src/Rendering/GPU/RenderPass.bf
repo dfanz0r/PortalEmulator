@@ -9,6 +9,7 @@ namespace Sizzle.Rendering.GPU;
 public class RenderPass
 {
 	private SDL_GPURenderPass* mHandle;
+	private SDL_GPUCommandBuffer* mCmdHandle;
 
 	// Store the SDL structs as member fields to guarantee their memory is valid
 	// for the lifetime of the RenderPass object.
@@ -20,12 +21,13 @@ public class RenderPass
 	/// @param colorAttachment The description of the color target to render to.
 	public this(CommandBuffer commandBuffer, ref ColorAttachmentInfo colorAttachment)
 	{
+		mCmdHandle = commandBuffer.GetHandle();
 		// 1. Initialize our member field. Its memory is now stable.
 		mColorInfo = colorAttachment.ToSDL();
 
 		// 2. Call the underlying SDL function, passing a pointer to our stable member field.
 		mHandle = SDL_BeginGPURenderPass(
-			commandBuffer.GetHandle(),
+			mCmdHandle,
 			&mColorInfo, // Pass the pointer to our class member.
 			1, // We know it's one color target.
 			null // No depth/stencil target in this constructor.
@@ -42,13 +44,14 @@ public class RenderPass
 		ref ColorAttachmentInfo colorAttachment,
 		ref DepthStencilAttachmentInfo depthAttachment)
 	{
+		mCmdHandle = commandBuffer.GetHandle();
 		// 1. Initialize our member fields. Their memory is now stable.
 		mColorInfo = colorAttachment.ToSDL();
 		mDepthInfo = depthAttachment.ToSDL();
 
 		// 2. Call the underlying SDL function, passing pointers to our stable member fields.
 		mHandle = SDL_BeginGPURenderPass(
-			commandBuffer.GetHandle(),
+			mCmdHandle,
 			&mColorInfo,
 			1,
 			&mDepthInfo
@@ -107,5 +110,14 @@ public class RenderPass
 	public void DrawIndexed(uint32 indexCount, uint32 instanceCount = 1, uint32 firstIndex = 0, int32 vertexOffset = 0)
 	{
 		SDL_DrawGPUIndexedPrimitives(mHandle, indexCount, instanceCount, firstIndex, vertexOffset, 0);
+	}
+
+	/// @brief Pushes data to a uniform slot on the vertex shader.
+	/// @param slotIndex The uniform slot index (register).
+	/// @param data Pointer to the data to push.
+	/// @param lengthInBytes Size of the data in bytes.
+	public void PushVertexUniformData(uint32 slotIndex, void* data, uint32 lengthInBytes)
+	{
+		SDL_PushGPUVertexUniformData(mCmdHandle, slotIndex, data, lengthInBytes);
 	}
 }

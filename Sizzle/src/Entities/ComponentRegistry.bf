@@ -9,6 +9,9 @@ using internal Sizzle.Entities;
 interface IComponentRegistryUntyped
 {
 	void FreeUntyped(IGameComponent component);
+	Type ComponentType { get; }
+	void UpdateAll();
+	void FixedUpdateAll();
 }
 
 /// @brief Dense component registry backed by the slab allocator for storage.
@@ -21,11 +24,34 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 	private List<T> mComponents = new .() ~ delete mComponents; // Dense array of all component slots
 	private BitfieldArray mActiveBits; // Bitfield tracking active components
 	private int mActiveCount;
+	private List<IUpdatableComponent> mUpdatableComponents ~ delete mUpdatableComponents;
 
 	public int Count => mActiveCount;
 	public int Capacity => mComponents.Count;
 
 	const int BLOCK_SIZE = 256; // Start with one bitfield block
+
+	public void UpdateAll()
+	{
+		if (mUpdatableComponents != null)
+		{
+			for (var comp in mUpdatableComponents)
+			{
+				comp.OnUpdate();
+			}
+		}
+	}
+
+	public void FixedUpdateAll()
+	{
+		if (mUpdatableComponents != null)
+		{
+			for (var comp in mUpdatableComponents)
+			{
+				comp.OnFixedUpdate();
+			}
+		}
+	}
 
 	/// @brief Creates a registry with the requested slab capacity.
 	/// @param slabCapacity Number of component instances to store per slab.
@@ -39,6 +65,22 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 
 		// Initialize bitfield
 		mActiveBits = .();
+
+		bool isUpdatable = typeof(T).IsSubtypeOf(typeof(IUpdatableComponent));
+		if (!isUpdatable)
+		{
+			for (var iface in typeof(T).Interfaces)
+			{
+				if (iface == typeof(IUpdatableComponent))
+				{
+					isUpdatable = true;
+					break;
+				}
+			}
+		}
+
+		if (isUpdatable)
+			mUpdatableComponents = new .();
 	}
 
 	/// @brief Releases all active components and backing storage.
@@ -88,6 +130,9 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 		mActiveBits.SetBit(slot);
 		mActiveCount++;
 
+		if (mUpdatableComponents != null)
+			mUpdatableComponents.Add((IUpdatableComponent)(Object)instance);
+
 		return instance;
 	}
 
@@ -103,6 +148,10 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 				mActiveBits.ClearBit(i);
 				mComponents[i] = null;
 				mActiveCount--;
+
+				if (mUpdatableComponents != null)
+					mUpdatableComponents.Remove((IUpdatableComponent)(Object)instance);
+
 				delete:mAllocator instance;
 				return;
 			}
@@ -115,6 +164,8 @@ class ComponentRegistry<T> : IComponentRegistryUntyped where T : IGameComponent,
 		Runtime.Assert(component is T, "Component type mismatch in FreeUntyped");
 		Free((T)component);
 	}
+
+	public Type ComponentType => typeof(T);
 
 	/// @brief Enumerator that yields only the active components tracked by the registry.
 	public struct Enumerator : IEnumerator<T>
