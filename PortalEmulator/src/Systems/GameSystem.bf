@@ -6,6 +6,7 @@ using Sizzle.Core;
 using Sizzle.Entities;
 using Sizzle.Rendering;
 using Sizzle.Rendering.GPU;
+using Sizzle.Assets;
 using SDL3;
 using SDL3_shadercross;
 using PortalEmulator.Components;
@@ -15,20 +16,9 @@ namespace PortalEmulator.Systems;
 
 static class GameSystem : ISystemInit
 {
-	[CRepr]
-	struct Vertex
-	{
-		public Vector3 Position;
-		public Vector4 Color;
-
-		public this(Vector3 pos, Vector4 col)
-		{
-			Position = pos;
-			Color = col;
-		}
-	}
-
 	private static Mesh mMesh;
+	private static Mesh mTerrainMesh;
+	private static Mesh mBuildingMesh;
 	private static Material mMaterial;
 	private static GraphicsPipeline mPipeline;
 
@@ -49,7 +39,7 @@ static class GameSystem : ISystemInit
 		defer delete vertices;
 
 		// Cube Indices (36 indices)
-		uint16[] indices = new uint16[]( // Front
+		uint32[] indices = new uint32[]( // Front
 			0, 1, 2, 2, 3, 0, // Right
 			1, 5, 6, 6, 2, 1, // Back
 			7, 6, 5, 5, 4, 7, // Left
@@ -60,32 +50,8 @@ static class GameSystem : ISystemInit
 		defer delete indices;
 
 		// Create Shaders
-		var vertSource = new String();
-		defer delete vertSource;
-		String vertPath = new String();
-		defer delete vertPath;
-		Utils.GetAssetPath(vertPath, "shaders/simple.vert.hlsl");
-		if (File.ReadAllText(vertPath, vertSource) case .Err)
-		{
-			Console.WriteLine("Failed to read vertex shader.");
-			return;
-		}
-
-		var fragSource = new String();
-		defer delete fragSource;
-		var fragPath = new String();
-		defer delete fragPath;
-		Utils.GetAssetPath(fragPath, "shaders/simple.frag.hlsl");
-		if (File.ReadAllText(fragPath, fragSource) case .Err)
-		{
-			Console.WriteLine("Failed to read fragment shader.");
-			return;
-		}
-
-		var vertShader = Engine.Device.CreateShaderFromHLSL(vertSource, .SDL_SHADERCROSS_SHADERSTAGE_VERTEX);
-		defer delete vertShader;
-		var fragShader = Engine.Device.CreateShaderFromHLSL(fragSource, .SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT);
-		defer delete fragShader;
+		var vertShader = AssetManager.Load<GpuShader>("shaders/simple.vert.hlsl");
+		var fragShader = AssetManager.Load<GpuShader>("shaders/simple.frag.hlsl");
 
 		if (vertShader == null || fragShader == null) return;
 
@@ -120,8 +86,48 @@ static class GameSystem : ISystemInit
 		mMesh.SetIndices(indices);
 		mMesh.Upload(Engine.Device);
 
+		mTerrainMesh = AssetManager.Load<Mesh>("models/MP_Granite_ClubHouse_Portal_Terrain.glb");
+
 		// --- Create Entities ---
 		var graph = EntityGraph.GetOrCreate(0);
+
+		// Create Building Entity
+		if (mTerrainMesh != null)
+		{
+			var buildingEntity = graph.CreateEntity();
+			MeshComponent meshComp;
+			if (buildingEntity.TryCreateComponent<MeshComponent>(out meshComp))
+			{
+				meshComp.Material = mMaterial;
+				meshComp.Mesh = mTerrainMesh;
+			}
+			Transform3D trans;
+			if (buildingEntity.TryGetComponent<Transform3D>(out trans))
+			{
+				trans.Position = .(0, -10, 0);
+				trans.Scale = .(0.1f, 0.1f, 0.1f); // Assuming it might be large
+			}
+		}
+
+		mBuildingMesh = AssetManager.Load<Mesh>("models/MP_Granite_ClubHouse_Portal_Assets.glb");
+
+		// Create Building Entity
+		if (mBuildingMesh != null)
+		{
+			var buildingEntity = graph.CreateEntity();
+			MeshComponent meshComp;
+			if (buildingEntity.TryCreateComponent<MeshComponent>(out meshComp))
+			{
+				meshComp.Material = mMaterial;
+				meshComp.Mesh = mBuildingMesh;
+			}
+			Transform3D trans;
+			if (buildingEntity.TryGetComponent<Transform3D>(out trans))
+			{
+				trans.Position = .(0, -10, 0);
+				trans.Scale = .(0.1f, 0.1f, 0.1f); // Assuming it might be large
+			}
+		}
 
 		// Create Camera
 		var cameraEntity = graph.CreateEntity();

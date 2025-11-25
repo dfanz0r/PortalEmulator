@@ -1,6 +1,7 @@
 using Sizzle.Rendering.GPU;
 using Sizzle.Rendering;
 using Sizzle.Entities;
+using Sizzle.Assets;
 using System;
 using System.Diagnostics;
 using SDL3_shadercross;
@@ -29,6 +30,7 @@ static class Engine
 			Runtime.FatalError("Could not create RenderDevice.");
 		}
 
+		SystemsManager.RegisterSetup<AssetManager>();
 		SystemsManager.RegisterSetup<ComponentSystem>();
 		SystemsManager.RegisterSetup<EntityGraph>();
 		SystemsManager.RegisterSetup<ComponentUpdateSystem>();

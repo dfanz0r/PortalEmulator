@@ -6,7 +6,7 @@ Name = "PortalEmulator"
 StartupObject = "PortalEmulator.Program"
 
 [Configs.Debug.Win64]
-PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]
+PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")", "CopyFilesIfNewer(\"$(WorkspaceDir)/Beef-Assimp/assimp-vc143-mt.dll\", \"$(TargetDir)\")"]
 
 [Configs.Release.Win64]
-PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")"]
+PostBuildCmds = ["CopyFilesIfNewer(\"$(WorkspaceDir)/assets\", \"$(TargetDir)\")", "CopyFilesIfNewer(\"$(WorkspaceDir)/Beef-Assimp/assimp-vc143-mt.dll\", \"$(TargetDir)\")"]

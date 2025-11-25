@@ -20,6 +20,21 @@ public static class RenderSystem
 
 	private static GpuTexture mDepthTexture ~ delete _;
 
+	class RenderBatch
+	{
+		public Mesh Mesh;
+		public Material Material;
+		public List<Matrix4x4> Instances = new .() ~ delete _;
+
+		public this(Mesh mesh, Material material)
+		{
+			Mesh = mesh;
+			Material = material;
+		}
+	}
+
+	private static List<RenderBatch> mBatches = new .() ~ DeleteContainerAndItems!(_);
+
 	public static void Render()
 	{
 		mFrameCount++;
@@ -46,15 +61,18 @@ public static class RenderSystem
 			mDepthTexture = Engine.Device.CreateTexture(ref TextureDescriptor((uint32)Engine.Window.Size.x, (uint32)Engine.Window.Size.y, .SDL_GPU_TEXTUREFORMAT_D16_UNORM) { Usage = .SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET });
 		}
 
-		// Collect Instance Data
-		List<Matrix4x4> matrices = scope .();
-		MeshComponent firstMesh = null;
+		// Clear Batches
+		for (var batch in mBatches)
+			batch.Instances.Clear();
 
+		// Collect Instance Data
 		var graph = EntityGraph.GetOrCreate(0);
 		var meshRegistry = ComponentSystem.GetRegistry<MeshComponent>();
+		uint32 totalInstances = 0;
+
 		for (var mesh in meshRegistry)
 		{
-			if (mesh == null) continue;
+			if (mesh == null || mesh.Mesh == null || mesh.Material == null) continue;
 
 			var entityId = mesh.GetEntityId();
 			if (entityId.GlobalID == 0) continue;
@@ -62,14 +80,30 @@ public static class RenderSystem
 			Matrix4x4 worldMatrix;
 			if (graph.TryGetWorldMatrix(entityId, out worldMatrix))
 			{
-				matrices.Add(worldMatrix);
-				if (firstMesh == null) firstMesh = mesh;
+				RenderBatch batch = null;
+				for (var b in mBatches)
+				{
+					if (b.Mesh == mesh.Mesh && b.Material == mesh.Material)
+					{
+						batch = b;
+						break;
+					}
+				}
+
+				if (batch == null)
+				{
+					batch = new RenderBatch(mesh.Mesh, mesh.Material);
+					mBatches.Add(batch);
+				}
+
+				batch.Instances.Add(worldMatrix);
+				totalInstances++;
 			}
 		}
 
-		if (matrices.Count > 0)
+		if (totalInstances > 0)
 		{
-			uint32 requiredSize = (uint32)(matrices.Count * sizeof(Matrix4x4));
+			uint32 requiredSize = (uint32)(totalInstances * sizeof(Matrix4x4));
 
 			// Resize Instance Buffer
 			if (mInstanceBuffer == null || mInstanceCapacity < requiredSize)
@@ -96,7 +130,16 @@ public static class RenderSystem
 			// Upload Data
 			if (transferBuffer.TryMap(false, var mappedPtr))
 			{
-				Internal.MemCpy(mappedPtr, matrices.Ptr, requiredSize);
+				uint8* ptr = (uint8*)mappedPtr;
+				for (var batch in mBatches)
+				{
+					if (batch.Instances.Count > 0)
+					{
+						uint32 batchSize = (uint32)(batch.Instances.Count * sizeof(Matrix4x4));
+						Internal.MemCpy(ptr, batch.Instances.Ptr, batchSize);
+						ptr += batchSize;
+					}
+				}
 				transferBuffer.Unmap();
 			}
 
@@ -168,28 +211,35 @@ public static class RenderSystem
 				viewProj = proj * view;
 			}
 
-			if (firstMesh != null && firstMesh.Material != null && firstMesh.Material.Pipeline != null && matrices.Count > 0)
+			uint32 instanceOffset = 0;
+			for (var batch in mBatches)
 			{
-				renderPass.BindPipeline(firstMesh.Material.Pipeline);
+				if (batch.Instances.Count == 0) continue;
 
-				if (firstMesh.Mesh != null)
+				if (batch.Material != null && batch.Material.Pipeline != null)
 				{
-					renderPass.BindVertexBuffer(0, firstMesh.Mesh.VertexBuffer);
-					renderPass.BindVertexBuffer(1, mInstanceBuffer); // Bind Instance Buffer
+					renderPass.BindPipeline(batch.Material.Pipeline);
 
-					// Push ViewProj Uniform
-					renderPass.PushVertexUniformData(0, &viewProj, sizeof(Matrix4x4));
+					if (batch.Mesh != null)
+					{
+						renderPass.BindVertexBuffer(0, batch.Mesh.VertexBuffer);
+						renderPass.BindVertexBuffer(1, mInstanceBuffer, instanceOffset * sizeof(Matrix4x4)); // Bind Instance Buffer with offset
 
-					if (firstMesh.Mesh.IndexBuffer != null)
-					{
-						renderPass.BindIndexBuffer(firstMesh.Mesh.IndexBuffer, .SDL_GPU_INDEXELEMENTSIZE_16BIT);
-						renderPass.DrawIndexed(firstMesh.Mesh.IndexCount, (uint32)matrices.Count, 0, 0);
-					}
-					else
-					{
-						renderPass.Draw(firstMesh.Mesh.VertexCount, (uint32)matrices.Count);
+						// Push ViewProj Uniform
+						renderPass.PushVertexUniformData(0, &viewProj, sizeof(Matrix4x4));
+
+						if (batch.Mesh.IndexBuffer != null)
+						{
+							renderPass.BindIndexBuffer(batch.Mesh.IndexBuffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
+							renderPass.DrawIndexed(batch.Mesh.IndexCount, (uint32)batch.Instances.Count, 0, 0);
+						}
+						else
+						{
+							renderPass.Draw(batch.Mesh.VertexCount, (uint32)batch.Instances.Count);
+						}
 					}
 				}
+				instanceOffset += (uint32)batch.Instances.Count;
 			}
 		}
 

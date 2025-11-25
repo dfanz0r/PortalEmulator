@@ -32,10 +32,10 @@ public class Mesh
 		VertexCount = (uint32)vertices.Count;
 	}
 
-	public void SetIndices(uint16[] indices)
+	public void SetIndices(uint32[] indices)
 	{
 		mIndexData.Clear();
-		mIndexData.AddRange(Span<uint8>((uint8*)indices.Ptr, indices.Count * sizeof(uint16)));
+		mIndexData.AddRange(Span<uint8>((uint8*)indices.Ptr, indices.Count * sizeof(uint32)));
 		IndexCount = (uint32)indices.Count;
 	}
 
