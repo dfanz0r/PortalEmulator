@@ -41,14 +41,20 @@ class MeshLoader : IAssetLoader
 			{
 				Vector3 pos = .(aiMesh.mVertices[i].x, aiMesh.mVertices[i].y, aiMesh.mVertices[i].z);
 				Vector4 color = .(1, 1, 1, 1); // Default white
-				
+				Vector3 normal = .(0, 1, 0);
+
 				if (aiMesh.mColors[0] != null)
 				{
 					color = .(aiMesh.mColors[0][i].r, aiMesh.mColors[0][i].g, aiMesh.mColors[0][i].b, aiMesh.mColors[0][i].a);
 				}
+
+				if (aiMesh.mNormals != null)
+				{
+					normal = .(aiMesh.mNormals[i].x, aiMesh.mNormals[i].y, aiMesh.mNormals[i].z);
+				}
 				
 				// Console.WriteLine($"Vertex {i}: {pos.x}, {pos.y}, {pos.z}");
-				vertices.Add(Vertex(pos, color));
+				vertices.Add(Vertex(pos, color, normal));
 			}
 
 			for (uint32 i = 0; i < aiMesh.mNumFaces; i++)

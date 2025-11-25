@@ -33,6 +33,7 @@ public struct TextureDescriptor
 	public uint32 Height;
 	public SDL_GPUTextureFormat Format;
 	public SDL_GPUTextureUsageFlags Usage = .SDL_GPU_TEXTUREUSAGE_SAMPLER | .SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+	public SDL_GPUSampleCount SampleCount = .SDL_GPU_SAMPLECOUNT_1;
 
 	/// @brief Creates a new 2D texture descriptor.
 	/// @param width The width of the texture in pixels.
@@ -52,7 +53,7 @@ public struct TextureDescriptor
 			{
 				width = Width, height = Height, format = Format, usage = Usage,
 				type = .SDL_GPU_TEXTURETYPE_2D, layer_count_or_depth = 1,
-				num_levels = 1, sample_count = .SDL_GPU_SAMPLECOUNT_1
+				num_levels = 1, sample_count = SampleCount
 			};
 	}
 }

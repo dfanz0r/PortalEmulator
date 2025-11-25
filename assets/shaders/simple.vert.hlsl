@@ -2,22 +2,27 @@
 
 // This struct defines the layout of the data coming from the vertex buffer.
 // The semantics (TEXCOORD0, TEXCOORD1) must match the locations set in AddVertexAttribute.
+struct InstanceData
+{
+    float4x4 Model;
+};
+
+StructuredBuffer<InstanceData> Instances : register(t0, space0);
+
 struct VSInput
 {
     float3 Position : TEXCOORD0; // Corresponds to location = 0
     float4 Color    : TEXCOORD1; // Corresponds to location = 1
-    
-    // Instance Data (Model Matrix)
-    float4 Model0 : TEXCOORD2;
-    float4 Model1 : TEXCOORD3;
-    float4 Model2 : TEXCOORD4;
-    float4 Model3 : TEXCOORD5;
+    float3 Normal   : TEXCOORD2; // Corresponds to location = 2
+    uint InstanceID : SV_InstanceID;
 };
 
 struct VSOutput
 {
     float4 Position : SV_Position;
     float4 Color    : COLOR0;
+    float3 Normal   : TEXCOORD0;
+    float3 WorldPos : TEXCOORD1;
 };
 
 cbuffer Uniforms : register(b0, space1)
@@ -31,20 +36,15 @@ VSOutput main(VSInput input)
 
     float4 pos = float4(input.Position, 1.0);
 
-    // Construct Model Matrix from rows/cols
-    // The input data is Column-Major (from Beef Matrix4x4), so input.Model0 is the first column (Right vector).
-    // The float4x4 constructor takes arguments as ROWS.
-    // So 'Model' here ends up being the Transpose of the actual instance matrix.
-    float4x4 Model = float4x4(input.Model0, input.Model1, input.Model2, input.Model3);
+    // Retrieve Model Matrix from StructuredBuffer
+    float4x4 Model = Instances[input.InstanceID].Model;
 
-    // Calculate final position
-    // Since 'Model' is Transposed, we use mul(pos, Model) which is equivalent to mul(Transpose(Model), pos)
-    // if we treat pos as a row vector.
-    // This effectively does: (Model_actual * pos)
-    
-    float4 worldPos = mul(pos, Model);
+    // Since Model is transposed (Beef Matrix4x4 is Column-Major), we use mul(pos, Model)
+    float4 worldPos = mul(Model, pos);
     output.Position = mul(ViewProj, worldPos);
+    output.WorldPos = worldPos.xyz;
 
+    output.Normal = normalize(mul(input.Normal, (float3x3)Model));
     output.Color = input.Color;
 
     return output;

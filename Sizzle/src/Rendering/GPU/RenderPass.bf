@@ -97,9 +97,11 @@ public class RenderPass
 	/// @brief Records a non-indexed draw call.
 	/// @param vertexCount The number of vertices to draw.
 	/// @param instanceCount The number of instances to draw.
-	public void Draw(uint32 vertexCount, uint32 instanceCount = 1)
+	/// @param firstVertex An optional offset into the vertex buffer.
+	/// @param firstInstance An optional offset for SV_InstanceID.
+	public void Draw(uint32 vertexCount, uint32 instanceCount = 1, uint32 firstVertex = 0, uint32 firstInstance = 0)
 	{
-		SDL_DrawGPUPrimitives(mHandle, vertexCount, instanceCount, 0, 0);
+		SDL_DrawGPUPrimitives(mHandle, vertexCount, instanceCount, firstVertex, firstInstance);
 	}
 
 	/// @brief Records an indexed draw call.
@@ -107,9 +109,10 @@ public class RenderPass
 	/// @param instanceCount The number of instances to draw.
 	/// @param firstIndex An optional offset into the index buffer.
 	/// @param vertexOffset An optional value added to each vertex index before lookup.
-	public void DrawIndexed(uint32 indexCount, uint32 instanceCount = 1, uint32 firstIndex = 0, int32 vertexOffset = 0)
+	/// @param firstInstance An optional offset for SV_InstanceID.
+	public void DrawIndexed(uint32 indexCount, uint32 instanceCount = 1, uint32 firstIndex = 0, int32 vertexOffset = 0, uint32 firstInstance = 0)
 	{
-		SDL_DrawGPUIndexedPrimitives(mHandle, indexCount, instanceCount, firstIndex, vertexOffset, 0);
+		SDL_DrawGPUIndexedPrimitives(mHandle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 	}
 
 	/// @brief Pushes data to a uniform slot on the vertex shader.
@@ -119,5 +122,33 @@ public class RenderPass
 	public void PushVertexUniformData(uint32 slotIndex, void* data, uint32 lengthInBytes)
 	{
 		SDL_PushGPUVertexUniformData(mCmdHandle, slotIndex, data, lengthInBytes);
+	}
+
+	/// @brief Pushes data to a uniform slot on the fragment shader.
+	/// @param slotIndex The uniform slot index (register).
+	/// @param data Pointer to the data to push.
+	/// @param lengthInBytes Size of the data in bytes.
+	public void PushFragmentUniformData(uint32 slotIndex, void* data, uint32 lengthInBytes)
+	{
+		SDL_PushGPUFragmentUniformData(mCmdHandle, slotIndex, data, lengthInBytes);
+	}
+
+	/// @brief Binds a storage buffer to the fragment shader.
+	/// @param slot The binding slot.
+	/// @param buffer The GpuBuffer to bind.
+	/// @param offset Byte offset.
+	public void BindFragmentStorageBuffer(uint32 slot, GpuBuffer buffer, uint32 offset = 0)
+	{
+		var bufferHandle = buffer.GetHandle();
+		SDL_BindGPUFragmentStorageBuffers(mHandle, slot, &bufferHandle, 1);
+	}
+
+	/// @brief Binds a storage buffer to the vertex shader.
+	/// @param slot The binding slot.
+	/// @param buffer The GpuBuffer to bind.
+	public void BindVertexStorageBuffer(uint32 slot, GpuBuffer buffer)
+	{
+		var bufferHandle = buffer.GetHandle();
+		SDL_BindGPUVertexStorageBuffers(mHandle, slot, &bufferHandle, 1);
 	}
 }

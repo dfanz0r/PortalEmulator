@@ -10,7 +10,7 @@ namespace PortalEmulator.Components;
 [RegisterComponent]
 public class CameraControllerComponent : IUpdatableComponent
 {
-	public float MoveSpeed = 10.0f;
+	public float MoveSpeed = 30.0f;
 	public float MouseSensitivity = 0.003f;
 
 	private float mYaw = 0.0f;

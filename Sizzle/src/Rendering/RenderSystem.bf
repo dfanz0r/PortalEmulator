@@ -18,7 +18,39 @@ public static class RenderSystem
 	private static uint32 mTransferBufferCapacity = 0;
 	private static uint64 mFrameCount = 0;
 
+	[CRepr]
+	struct SceneUniforms
+	{
+		public Vector3 CameraPos;
+		public uint32 LightCount;
+		public Vector4 AmbientColor;
+		public Vector3 Padding;
+	}
+
+	[CRepr]
+	struct LightData
+	{
+		public Vector4 Position; // w is Type
+		public Vector4 Color;    // w is Intensity
+		public Vector4 Direction; // w is Range
+	}
+
+	[CRepr]
+	struct MaterialData
+	{
+		public Vector3 Albedo;
+		public float Metallic;
+		public float Roughness;
+		public Vector3 Emissive;
+	}
+
+	private static GpuBuffer mLightBuffer ~ delete _;
+	private static uint32 mLightCapacity = 0;
+	private static GpuTransferBuffer[3] mLightTransferBuffers;
+	private static uint32 mLightTransferBufferCapacity = 0;
+
 	private static GpuTexture mDepthTexture ~ delete _;
+	private static GpuTexture mColorTexture ~ delete _;
 
 	class RenderBatch
 	{
@@ -58,15 +90,84 @@ public static class RenderSystem
 		if (mDepthTexture == null || mDepthTexture.Width != (uint32)Engine.Window.Size.x || mDepthTexture.Height != (uint32)Engine.Window.Size.y)
 		{
 			if (mDepthTexture != null) delete mDepthTexture;
-			mDepthTexture = Engine.Device.CreateTexture(ref TextureDescriptor((uint32)Engine.Window.Size.x, (uint32)Engine.Window.Size.y, .SDL_GPU_TEXTUREFORMAT_D16_UNORM) { Usage = .SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET });
+			mDepthTexture = Engine.Device.CreateTexture(ref TextureDescriptor((uint32)Engine.Window.Size.x, (uint32)Engine.Window.Size.y, .SDL_GPU_TEXTUREFORMAT_D32_FLOAT) { Usage = .SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, SampleCount = .SDL_GPU_SAMPLECOUNT_4 });
+		}
+
+		// Manage MSAA Color Texture
+		if (mColorTexture == null || mColorTexture.Width != (uint32)Engine.Window.Size.x || mColorTexture.Height != (uint32)Engine.Window.Size.y)
+		{
+			if (mColorTexture != null) delete mColorTexture;
+			mColorTexture = Engine.Device.CreateTexture(ref TextureDescriptor((uint32)Engine.Window.Size.x, (uint32)Engine.Window.Size.y, SDL_GetGPUSwapchainTextureFormat(Engine.Device.GetDeviceHandle(), Engine.Window.GetWindowHandle())) { Usage = .SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, SampleCount = .SDL_GPU_SAMPLECOUNT_4 });
 		}
 
 		// Clear Batches
 		for (var batch in mBatches)
 			batch.Instances.Clear();
 
-		// Collect Instance Data
 		var graph = EntityGraph.GetOrCreate(0);
+
+		// Collect Lights
+		var lightRegistry = ComponentSystem.GetRegistry<LightComponent>();
+		List<LightData> lights = scope .();
+		
+		for (var light in lightRegistry)
+		{
+			if (light == null) continue;
+			var entityId = light.GetEntityId();
+			if (entityId.GlobalID == 0) continue;
+
+			Transform3D transform;
+			if (graph.TryGetComponent<Transform3D>(entityId, out transform))
+			{
+				Vector3 pos = transform.Position;
+				Quaternion rot = transform.Rotation;
+				Vector3 dir = rot.Rotate(Vector3.Forward);
+
+				lights.Add(LightData() {
+					Position = .(pos.x, pos.y, pos.z, (float)light.Type),
+					Color = .(light.Color.x, light.Color.y, light.Color.z, light.Intensity),
+					Direction = .(dir.x, dir.y, dir.z, light.Range)
+				});
+			}
+		}
+
+		if (lights.Count > 0)
+		{
+			uint32 requiredSize = (uint32)(lights.Count * sizeof(LightData));
+
+			// Resize Light Buffer
+			if (mLightBuffer == null || mLightCapacity < requiredSize)
+			{
+				if (mLightBuffer != null) delete mLightBuffer;
+				mLightCapacity = Math.Max(requiredSize, mLightCapacity * 2);
+				if (mLightCapacity == 0) mLightCapacity = 16 * sizeof(LightData);
+
+				mLightBuffer = Engine.Device.CreateBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, mLightCapacity));
+			}
+
+			// Manage Transfer Buffer
+			int frameIndex = (int)(mFrameCount % 3);
+			if (mLightTransferBuffers[frameIndex] == null || mLightTransferBufferCapacity < requiredSize)
+			{
+				if (mLightTransferBuffers[frameIndex] != null) delete mLightTransferBuffers[frameIndex];
+				mLightTransferBufferCapacity = Math.Max(requiredSize, mLightTransferBufferCapacity * 2);
+				if (mLightTransferBufferCapacity == 0) mLightTransferBufferCapacity = 16 * sizeof(LightData);
+
+				mLightTransferBuffers[frameIndex] = Engine.Device.CreateTransferBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, mLightTransferBufferCapacity));
+			}
+			var transferBuffer = mLightTransferBuffers[frameIndex];
+
+			// Upload Data
+			if (transferBuffer.TryMap(false, var mappedPtr))
+			{
+				Internal.MemCpy(mappedPtr, lights.Ptr, requiredSize);
+				transferBuffer.Unmap();
+			}
+
+			cmd.UploadToBuffer(transferBuffer, 0, mLightBuffer, 0, requiredSize);
+		}
+
+		// Collect Instance Data
 		var meshRegistry = ComponentSystem.GetRegistry<MeshComponent>();
 		uint32 totalInstances = 0;
 
@@ -112,7 +213,7 @@ public static class RenderSystem
 				mInstanceCapacity = Math.Max(requiredSize, mInstanceCapacity * 2);
 				if (mInstanceCapacity == 0) mInstanceCapacity = 1024 * sizeof(Matrix4x4);
 
-				mInstanceBuffer = Engine.Device.CreateBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_VERTEX, mInstanceCapacity));
+				mInstanceBuffer = Engine.Device.CreateBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, mInstanceCapacity));
 			}
 
 			// Manage Transfer Buffer
@@ -123,7 +224,7 @@ public static class RenderSystem
 				mTransferBufferCapacity = Math.Max(requiredSize, mTransferBufferCapacity * 2);
 				if (mTransferBufferCapacity == 0) mTransferBufferCapacity = 1024 * sizeof(Matrix4x4);
 
-				mTransferBuffers[frameIndex] = Engine.Device.CreateTransferBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_VERTEX, mTransferBufferCapacity));
+				mTransferBuffers[frameIndex] = Engine.Device.CreateTransferBuffer(ref BufferDescriptor(.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, mTransferBufferCapacity));
 			}
 			var transferBuffer = mTransferBuffers[frameIndex];
 
@@ -148,9 +249,11 @@ public static class RenderSystem
 
 		var colorAttachment = ColorAttachmentInfo()
 			{
-				Texture = swapchainTexture,
+				Texture = mColorTexture,
 				LoadOp = .SDL_GPU_LOADOP_CLEAR,
-				ClearColor = SDL_FColor() { r = 0.1f, g = 0.1f, b = 0.15f, a = 1.0f }
+				StoreOp = .SDL_GPU_STOREOP_RESOLVE,
+				ClearColor = SDL_FColor() { r = 0.1f, g = 0.1f, b = 0.15f, a = 1.0f },
+				ResolveTexture = swapchainTexture
 			};
 		
 		var depthAttachment = DepthStencilAttachmentInfo()
@@ -168,6 +271,7 @@ public static class RenderSystem
 
 			// Camera setup
 			Matrix4x4 viewProj = Matrix4x4.Identity();
+			Vector3 cameraPosition = .(0, 0, 0);
 			bool cameraFound = false;
 
 			var cameraRegistry = ComponentSystem.GetRegistry<CameraComponent>();
@@ -181,6 +285,7 @@ public static class RenderSystem
 				if (graph.TryGetComponent<Transform3D>(entityId, out transform))
 				{
 					Vector3 pos = transform.Position;
+					cameraPosition = pos;
 					Quaternion rot = transform.Rotation;
 
 					Vector3 forward = rot.Rotate(Vector3.Forward);
@@ -201,6 +306,7 @@ public static class RenderSystem
 			{
 				// Fallback camera
 				Vector3 cameraPos = .(0, 0, -40);
+				cameraPosition = cameraPos;
 				Vector3 target = .(0, 0, 0);
 				Vector3 up = .(0, 1, 0);
 				Matrix4x4 view = Matrix4x4.LookAt(cameraPos, target, up);
@@ -223,19 +329,39 @@ public static class RenderSystem
 					if (batch.Mesh != null)
 					{
 						renderPass.BindVertexBuffer(0, batch.Mesh.VertexBuffer);
-						renderPass.BindVertexBuffer(1, mInstanceBuffer, instanceOffset * sizeof(Matrix4x4)); // Bind Instance Buffer with offset
+						renderPass.BindVertexStorageBuffer(0, mInstanceBuffer);
 
 						// Push ViewProj Uniform
 						renderPass.PushVertexUniformData(0, &viewProj, sizeof(Matrix4x4));
 
+						SceneUniforms sceneUniforms = .();
+						sceneUniforms.CameraPos = cameraPosition;
+						sceneUniforms.LightCount = (uint32)lights.Count;
+						sceneUniforms.AmbientColor = .(0.2f, 0.2f, 0.25f, 1.0f); // Ambient light
+						renderPass.PushFragmentUniformData(0, &sceneUniforms, sizeof(SceneUniforms));
+
+						if (mLightBuffer != null && lights.Count > 0)
+						{
+							renderPass.BindFragmentStorageBuffer(0, mLightBuffer);
+						}
+
+						MaterialData matData = .();
+						matData.Albedo = batch.Material.Albedo;
+						matData.Metallic = batch.Material.Metallic;
+						matData.Roughness = batch.Material.Roughness;
+						matData.Emissive = batch.Material.Emissive;
+						renderPass.PushFragmentUniformData(1, &matData, sizeof(MaterialData));
+
+
+
 						if (batch.Mesh.IndexBuffer != null)
 						{
 							renderPass.BindIndexBuffer(batch.Mesh.IndexBuffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
-							renderPass.DrawIndexed(batch.Mesh.IndexCount, (uint32)batch.Instances.Count, 0, 0);
+							renderPass.DrawIndexed(batch.Mesh.IndexCount, (uint32)batch.Instances.Count, 0, 0, instanceOffset);
 						}
 						else
 						{
-							renderPass.Draw(batch.Mesh.VertexCount, (uint32)batch.Instances.Count);
+							renderPass.Draw(batch.Mesh.VertexCount, (uint32)batch.Instances.Count, 0, instanceOffset);
 						}
 					}
 				}
@@ -254,10 +380,22 @@ public static class RenderSystem
 			mDepthTexture = null;
 		}
 
+		if (mColorTexture != null)
+		{
+			delete mColorTexture;
+			mColorTexture = null;
+		}
+
 		if (mInstanceBuffer != null)
 		{
 			delete mInstanceBuffer;
 			mInstanceBuffer = null;
+		}
+
+		if (mLightBuffer != null)
+		{
+			delete mLightBuffer;
+			mLightBuffer = null;
 		}
 
 		for (int i = 0; i < mTransferBuffers.Count; i++)
@@ -266,6 +404,15 @@ public static class RenderSystem
 			{
 				delete mTransferBuffers[i];
 				mTransferBuffers[i] = null;
+			}
+		}
+
+		for (int i = 0; i < mLightTransferBuffers.Count; i++)
+		{
+			if (mLightTransferBuffers[i] != null)
+			{
+				delete mLightTransferBuffers[i];
+				mLightTransferBuffers[i] = null;
 			}
 		}
 	}

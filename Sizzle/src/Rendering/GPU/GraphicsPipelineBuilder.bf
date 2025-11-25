@@ -126,6 +126,17 @@ public class GraphicsPipelineBuilder
 		return this;
 	}
 
+	/// @brief Configures the multisample state.
+	/// @param sampleCount The number of samples per pixel.
+	/// @param sampleMask The sample mask.
+	/// @return The builder instance for chaining.
+	public Self SetMultisampleState(SDL_GPUSampleCount sampleCount, uint32 sampleMask = 0)
+	{
+		mMultisampleState.sample_count = sampleCount;
+		mMultisampleState.sample_mask = sampleMask;
+		return this;
+	}
+
 	/// @brief Assembles the final GpuGraphicsPipeline object from the configured state.
 	/// @param device The RenderDevice used to create the pipeline resource.
 	/// @return The newly created GpuGraphicsPipeline.
